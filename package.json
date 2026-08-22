@@ -1,0 +1,24 @@
+{
+  "name": "ai-dev-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-agent-simulated development studio — practice project for the Anthropic stack (TS SDK, Messages API, MCP, agents, multi-agent, subagents).",
+  "type": "module",
+  "scripts": {
+    "test:store": "tsx scripts/test-feature-state-store.ts",
+    "mcp:feature-state": "tsx src/mcp-servers/feature-state/server.ts",
+    "test:mcp-client": "tsx scripts/test-feature-state-client.ts",
+    "test:core": "tsx scripts/test-core.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

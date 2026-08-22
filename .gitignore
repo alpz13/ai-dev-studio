@@ -34,3 +34,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+/dist
+
+# ai-dev-studio: estado y logs generados en tiempo de ejecución
+# (el .gitkeep de cada carpeta sí se versiona)
+/features/*
+!/features/.gitkeep
+/logs/*
+!/logs/.gitkeep
