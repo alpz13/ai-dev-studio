@@ -97,6 +97,28 @@ describe('FeatureStateStore', () => {
     expect(pending[0].featureId).toBe('feat_demo_export-csv');
   });
 
+  it('listFeatures ignora entradas que no son directorios', async () => {
+    await store.upsertState({
+      featureId: 'feat_demo_export-csv',
+      title: 'Export reports to CSV',
+      status: 'in_progress',
+      currentStage: 'Dev',
+    });
+    await fs.writeFile(path.join(tmpDir, 'not-a-feature.txt'), 'contenido', 'utf-8');
+
+    const features = await store.listFeatures();
+    expect(features).toHaveLength(1);
+    expect(features[0].featureId).toBe('feat_demo_export-csv');
+  });
+
+  it('readState propaga errores que no son ENOENT (JSON corrupto)', async () => {
+    const featureDir = path.join(tmpDir, 'feat_corrupted');
+    await fs.mkdir(featureDir, { recursive: true });
+    await fs.writeFile(path.join(featureDir, 'state.json'), '{ json invalido', 'utf-8');
+
+    await expect(store.readState('feat_corrupted')).rejects.toThrow();
+  });
+
   it('writeState actualiza updatedAt automáticamente', async () => {
     const before = new Date();
     const created = await store.upsertState({

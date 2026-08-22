@@ -13,7 +13,6 @@ vi.mock('../src/feature-state/store.js', () => ({
     upsertState = mockUpsertState;
     listPending = mockListPending;
   },
-  resolveFeaturesDir: vi.fn().mockReturnValue('/tmp/features'),
 }));
 
 vi.mock('@modelcontextprotocol/sdk/server/index.js', () => ({
