@@ -6,7 +6,7 @@ const mockUpsertState = vi.hoisted(() => vi.fn());
 const mockListPending = vi.hoisted(() => vi.fn());
 const capturedHandlers = vi.hoisted(() => new Map<unknown, Function>());
 
-vi.mock('../src/feature-state/store.js', () => ({
+vi.mock('../../../feature-state/store.js', () => ({
   FeatureStateStore: class MockFeatureStateStore {
     ensureDir = mockEnsureDir;
     readState = mockReadState;
@@ -42,7 +42,7 @@ beforeAll(async () => {
   ListToolsRequestSchema = types.ListToolsRequestSchema;
 
   // Cargar el servidor; el código a nivel de módulo (incluyendo main()) se ejecuta aquí
-  await import('../src/mcp-servers/feature-state/server.js');
+  await import('../server.js');
 });
 
 describe('Feature State MCP Server', () => {
@@ -86,7 +86,7 @@ describe('Feature State MCP Server', () => {
         params: { name: 'get_feature_state', arguments: { featureId: 'feat_missing' } },
       });
 
-      expect(result.content[0].text).toContain('No state found');
+      expect(result.content[0].text).toContain('No existe estado para');
       expect(result.content[0].text).toContain('feat_missing');
     });
   });
@@ -129,8 +129,8 @@ describe('Feature State MCP Server', () => {
 
   it('lanza error para una herramienta desconocida', async () => {
     const handler = capturedHandlers.get(CallToolRequestSchema) as Function;
-    await expect(
-      handler({ params: { name: 'unknown_tool', arguments: {} } }),
-    ).rejects.toThrow('Unknown tool: unknown_tool');
+    const result = await handler({ params: { name: 'unknown_tool', arguments: {} } });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Herramienta desconocida');
   });
 });

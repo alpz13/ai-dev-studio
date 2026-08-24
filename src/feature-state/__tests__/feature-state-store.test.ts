@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { FeatureStateStore } from '../src/feature-state/store.js';
+import { FeatureStateStore } from '../store.js';
 
 describe('FeatureStateStore', () => {
   let tmpDir: string;
