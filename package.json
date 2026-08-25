@@ -2,17 +2,23 @@
   "name": "ai-dev-studio",
   "version": "0.1.0",
   "private": true,
-  "description": "AI-agent-simulated development studio — practice project for the Anthropic stack (TS SDK, Messages API, MCP, agents, multi-agent, subagents).",
+  "description": "Estudio de desarrollo simulado por agentes de IA — proyecto de práctica del stack de Anthropic (TS SDK, Messages API, MCP, agentes, multi-agente, subagentes).",
   "type": "module",
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
     "test:store": "tsx scripts/test-feature-state-store.ts",
     "mcp:feature-state": "tsx src/mcp-servers/feature-state/server.ts",
     "test:mcp-client": "tsx scripts/test-feature-state-client.ts",
     "test:core": "tsx scripts/test-core.ts",
-    "typecheck": "tsc --noEmit"
+    "test:fs-git": "tsx scripts/test-filesystem-git-ops.ts",
+    "test:trace-logger": "tsx scripts/test-trace-logger.ts",
+    "test:agent-helpers": "tsx scripts/test-agent-loop-helpers.ts",
+    "mcp:filesystem-git": "tsx src/mcp-servers/filesystem-git/server.ts",
+    "agent:dev": "tsx scripts/run-dev-agent.ts",
+    "studio": "tsx scripts/run-studio.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
@@ -21,9 +27,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^2.1.8",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
-    "vitest": "^4.1.11"
+    "vitest": "^2.1.8"
   }
 }

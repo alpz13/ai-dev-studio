@@ -36,9 +36,11 @@ yarn-error.log*
 next-env.d.ts
 /dist
 
-# ai-dev-studio: estado y logs generados en tiempo de ejecución
+# ai-dev-studio: estado, logs y workspaces generados en tiempo de ejecución
 # (el .gitkeep de cada carpeta sí se versiona)
 /features/*
 !/features/.gitkeep
 /logs/*
 !/logs/.gitkeep
+/workspaces/*
+!/workspaces/.gitkeep

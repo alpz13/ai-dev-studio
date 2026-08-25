@@ -14,7 +14,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
   },
 }));
 
-import { sendMessage, streamMessage } from '../src/core/client.js';
+import { sendMessage, streamMessage } from '../client.js';
 
 describe('sendMessage', () => {
   beforeEach(() => {
