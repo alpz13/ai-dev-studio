@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { newSpanId, resolveLogsDir, TraceLogger } from "../trace-logger.js";
+import { newSpanId, resolveLogsDir, TraceLogger } from "../../observability/trace-logger.js";
 
 describe("observability/trace-logger: TraceLogger", () => {
   let dir: string;

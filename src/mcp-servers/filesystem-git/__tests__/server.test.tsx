@@ -42,11 +42,20 @@ async function loadServerModule(workspaceRoot: string) {
   handlers = new Map();
   process.env.WORKSPACE_ROOT = workspaceRoot;
   vi.resetModules();
-  connectMock.mockClear();
-  await import("../server.js");
-  // gitInitIfNeeded (async) corre antes de connect: esperar a que connectMock
-  // sea invocado garantiza que git init terminó antes de que el test empiece.
-  await vi.waitUntil(() => connectMock.mock.calls.length > 0, { timeout: 10_000, interval: 20 });
+  await import("../../../mcp-servers/filesystem-git/server.js");
+  // main() corre en segundo plano: esperamos a que gitInitIfNeeded cree el
+  // directorio .git en vez de usar un timeout fijo. Máximo 5s por si git
+  // no está disponible en el entorno (los tests de git fallarán igualmente,
+  // pero sin colgar la suite entera).
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    try {
+      await fs.access(path.join(workspaceRoot, ".git"));
+      break;
+    } catch {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
 }
 
 function textOf(result: ToolResult): string {
@@ -63,7 +72,9 @@ describe("mcp-servers/filesystem-git/server", () => {
   });
 
   afterEach(async () => {
-    await fs.rm(workspaceRoot, { recursive: true, force: true });
+    // maxRetries/retryDelay maneja EBUSY en Windows cuando git todavía
+    // tiene handles abiertos al momento de limpiar el directorio temporal.
+    await fs.rm(workspaceRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
     delete process.env.WORKSPACE_ROOT;
   });
 

@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ensureRoot, listDirEntries, readTextFile, resolveSafePath, writeTextFile } from "../fs-ops.js";
+import { ensureRoot, listDirEntries, readTextFile, resolveSafePath, writeTextFile } from "../../filesystem-git/fs-ops.js";
 
 describe("filesystem-git/fs-ops", () => {
   let root: string;

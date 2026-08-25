@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mcpToolToAnthropicTool, mcpToolsToAnthropicTools } from "../mcp-tool-adapter.js";
+import { mcpToolToAnthropicTool, mcpToolsToAnthropicTools } from "../../../agents/shared/mcp-tool-adapter.js";
 
 describe("agents/shared/mcp-tool-adapter", () => {
   it("mcpToolToAnthropicTool conserva name, description e input_schema", () => {

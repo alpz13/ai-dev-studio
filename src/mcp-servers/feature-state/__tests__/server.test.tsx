@@ -46,7 +46,7 @@ async function loadServerModule(featuresDir: string) {
   handlers = new Map();
   process.env.FEATURES_DIR = featuresDir;
   vi.resetModules();
-  await import("../server.js");
+  await import("../../../mcp-servers/feature-state/server.js");
   // main() sigue corriendo en segundo plano tras el import (ensureDir +
   // connect, ambos inofensivos/mockeados aquí); un tick alcanza para que
   // termine antes de que el test siga.

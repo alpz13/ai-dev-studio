@@ -21,6 +21,12 @@ export interface TraceEventBase {
   event: TraceEventType;
 }
 
+// El contexto reusable que un agente arma una sola vez (traceId/spanId/
+// agentRole) y luego reparte en cada llamada a log(), sumando `event` cada
+// vez — por eso NO lleva `event` (a diferencia de TraceEventBase). Ver
+// src/agents/shared/run-agent-loop.ts para el caso de uso.
+export type TraceContext = Omit<TraceEventBase, "event">;
+
 export type TraceEventInput = TraceEventBase & { [extra: string]: unknown };
 
 export interface TraceEvent extends TraceEventBase {

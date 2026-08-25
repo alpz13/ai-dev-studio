@@ -2,8 +2,8 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { writeTextFile } from "../fs-ops.js";
-import { gitAdd, gitCommit, gitDiff, gitInitIfNeeded, gitStatus } from "../git-ops.js";
+import { writeTextFile } from "../../filesystem-git/fs-ops.js";
+import { gitAdd, gitCommit, gitDiff, gitInitIfNeeded, gitStatus } from "../../filesystem-git/git-ops.js";
 
 // Estas pruebas corren git de verdad (vía child_process) contra un repo real
 // en un directorio temporal — sin mocks, sin red.

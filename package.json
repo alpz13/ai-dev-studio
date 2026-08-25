@@ -14,6 +14,7 @@
     "test:agent-helpers": "tsx scripts/test-agent-loop-helpers.ts",
     "mcp:filesystem-git": "tsx src/mcp-servers/filesystem-git/server.ts",
     "agent:dev": "tsx scripts/run-dev-agent.ts",
+    "studio": "tsx scripts/run-studio.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -4,7 +4,7 @@ import {
   extractText,
   extractToolUseBlocks,
   type ContentBlock,
-} from "../agent-loop-helpers.js";
+} from "../../../agents/shared/agent-loop-helpers.js";
 
 describe("agents/shared/agent-loop-helpers", () => {
   const mixedContent: ContentBlock[] = [
