@@ -1,16 +1,16 @@
 /**
- * El Director: orquesta el pipeline PM → Arquitecto → Dev → QA → DevOps
- * para una feature, consultando y actualizando su estado en el Feature
- * State MCP (ver ARCHITECTURE.md sección 4) para poder retomarla si quedó
- * a medias.
+ * The Director: orchestrates the PM → Architect → Dev → QA → DevOps
+ * pipeline for a feature, reading and updating its state in the Feature
+ * State MCP (see ARCHITECTURE.md section 4) so it can be resumed if it
+ * was left half-done.
  *
- * A propósito el Director NO es en sí mismo un agente que llama a Claude:
- * es código de orquestación determinista que delega cada paso de trabajo
- * real a un agente (PM/Arquitecto/Dev/QA/DevOps), cada uno de los cuales sí
- * corre su propio loop contra la Messages API. Es un patrón común de
- * multi-agente (un supervisor de código, no un LLM, decidiendo el ruteo) y
- * mantiene al Director fácil de probar sin mockear la API de Anthropic. La
- * experiencia de "hablarle" al Director por chat es Fase 5.
+ * The Director is deliberately NOT itself an agent that calls Claude: it's
+ * deterministic orchestration code that delegates each real work step to
+ * an agent (PM/Architect/Dev/QA/DevOps), each of which does run its own
+ * loop against the Messages API. This is a common multi-agent pattern (a
+ * code supervisor, not an LLM, deciding the routing) and keeps the
+ * Director easy to test without mocking the Anthropic API. The experience
+ * of "talking" to the Director via chat is Phase 5.
  */
 import { newSpanId, TraceLogger } from "../../observability/trace-logger.js";
 import type { FeatureState, StageName } from "../../feature-state/store.js";
@@ -27,13 +27,13 @@ import { runQaAgent, isQaApproved } from "../qa/agent.js";
 import { runDevopsAgent } from "../devops/agent.js";
 import { generateFeatureId } from "./slugify.js";
 
-const STAGE_ORDER: StageName[] = ["PM", "Arquitecto", "Dev", "QA", "DevOps"];
+const STAGE_ORDER: StageName[] = ["PM", "Architect", "Dev", "QA", "DevOps"];
 const MAX_QA_RETRIES = 2;
 
 export interface RunDirectorOptions {
-  /** Si se da, retoma esa feature (debe existir ya). */
+  /** If given, resumes that feature (it must already exist). */
   featureId?: string;
-  /** Requerido si featureId no existe todavía (crea la feature). */
+  /** Required if featureId doesn't exist yet (creates the feature). */
   task?: string;
 }
 
@@ -45,7 +45,7 @@ export interface DirectorResult {
 interface StageOutcome {
   summary: string;
   artifact?: string;
-  /** Solo relevante para el stage QA. */
+  /** Only relevant for the QA stage. */
   approved?: boolean;
 }
 
@@ -63,15 +63,15 @@ async function runStage(stage: StageName, ctx: StageContext): Promise<StageOutco
     case "PM": {
       const summary = await runPmAgent({
         ...base,
-        task: `Pedido del usuario: "${ctx.title}". Escribe specs.md con resumen, alcance y criterios de aceptación.`,
+        task: `User request: "${ctx.title}". Write specs.md with a summary, scope, and acceptance criteria.`,
       });
       return { summary, artifact: "specs.md" };
     }
 
-    case "Arquitecto": {
+    case "Architect": {
       const summary = await runArchitectAgent({
         ...base,
-        task: `Lee specs.md y diseña la arquitectura técnica en design.md. Pedido original: "${ctx.title}".`,
+        task: `Read specs.md and design the technical architecture in design.md. Original request: "${ctx.title}".`,
       });
       return { summary, artifact: "design.md" };
     }
@@ -79,8 +79,8 @@ async function runStage(stage: StageName, ctx: StageContext): Promise<StageOutco
     case "Dev": {
       const task =
         ctx.qaRetries > 0
-          ? "QA encontró problemas — revisa qa-report.md en el workspace, corrígelos, y confirma con un commit."
-          : `Lee specs.md y design.md, implementa la feature, y confirma con un commit de git. Pedido original: "${ctx.title}".`;
+          ? "QA found issues — review qa-report.md in the workspace, fix them, and commit."
+          : `Read specs.md and design.md, implement the feature, and commit with git. Original request: "${ctx.title}".`;
       const summary = await runDevAgent({ ...base, task });
       return { summary };
     }
@@ -88,7 +88,7 @@ async function runStage(stage: StageName, ctx: StageContext): Promise<StageOutco
     case "QA": {
       const summary = await runQaAgent({
         ...base,
-        task: 'Revisa el código contra specs.md y design.md. Escribe qa-report.md y termina tu respuesta con una línea exacta "VEREDICTO: APPROVED" o "VEREDICTO: FAILED".',
+        task: 'Review the code against specs.md and design.md. Write qa-report.md and end your reply with an exact line "VERDICT: APPROVED" or "VERDICT: FAILED".',
       });
       return { summary, artifact: "qa-report.md", approved: isQaApproved(summary) };
     }
@@ -96,7 +96,7 @@ async function runStage(stage: StageName, ctx: StageContext): Promise<StageOutco
     case "DevOps": {
       const summary = await runDevopsAgent({
         ...base,
-        task: `Agrega una entrada a CHANGELOG.md resumiendo la feature "${ctx.title}" y confirma un commit final si hace falta.`,
+        task: `Add an entry to CHANGELOG.md summarizing the feature "${ctx.title}" and make a final commit if needed.`,
       });
       return { summary, artifact: "CHANGELOG.md" };
     }
@@ -105,7 +105,7 @@ async function runStage(stage: StageName, ctx: StageContext): Promise<StageOutco
 
 export async function runDirector(opts: RunDirectorOptions): Promise<DirectorResult> {
   if (!opts.featureId && !opts.task) {
-    throw new Error("runDirector necesita featureId (para retomar) o task (para crear una feature nueva).");
+    throw new Error("runDirector needs featureId (to resume) or task (to create a new feature).");
   }
 
   const traceLogger = new TraceLogger();
@@ -121,7 +121,7 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
     let state = await getFeatureState(stateClient, featureId);
     if (!state) {
       if (!opts.task) {
-        throw new Error(`No existe la feature "${featureId}" y no se dio un task para crearla.`);
+        throw new Error(`Feature "${featureId}" doesn't exist and no task was given to create it.`);
       }
       state = await updateFeatureState(stateClient, {
         featureId,
@@ -143,7 +143,7 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
         continue;
       }
 
-      await traceLogger.log({ ...directorCtx, event: "message", stage, note: "arrancando stage" });
+      await traceLogger.log({ ...directorCtx, event: "message", stage, note: "starting stage" });
       state = await updateFeatureState(stateClient, { featureId, currentStage: stage, status: "in_progress" });
 
       try {
@@ -159,7 +159,7 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
             await traceLogger.log({
               ...directorCtx,
               event: "agent_end",
-              output: `Bloqueada: QA siguió fallando tras ${qaRetries} reintento(s).`,
+              output: `Blocked: QA kept failing after ${qaRetries} retry(ies).`,
             });
             return { featureId, finalState: state };
           }
@@ -168,10 +168,10 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
           state = await updateFeatureState(stateClient, {
             featureId,
             currentStage: "Dev",
-            // Importante: también hay que resetear el estado de Dev a
-            // "in_progress" — si no, el chequeo `stages[stage]?.status ===
-            // "done"` de arriba se lo saltaría al volver a entrar al loop en
-            // stageIndex = Dev, y el reintento nunca correría a Dev de nuevo.
+            // Important: Dev's status also needs to be reset to
+            // "in_progress" — otherwise the `stages[stage]?.status ===
+            // "done"` check above would skip it when the loop re-enters at
+            // stageIndex = Dev, and the retry would never run Dev again.
             stages: {
               Dev: { status: "in_progress" },
               QA: { status: "failed", notes: outcome.summary },
@@ -181,7 +181,7 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
             ...directorCtx,
             event: "message",
             stage: "QA",
-            note: `no aprobado, reintento ${qaRetries}/${MAX_QA_RETRIES}`,
+            note: `not approved, retry ${qaRetries}/${MAX_QA_RETRIES}`,
           });
           stageIndex = STAGE_ORDER.indexOf("Dev");
           continue;
@@ -205,7 +205,7 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
     }
 
     state = await updateFeatureState(stateClient, { featureId, status: "done" });
-    await traceLogger.log({ ...directorCtx, event: "agent_end", output: "Pipeline completo." });
+    await traceLogger.log({ ...directorCtx, event: "agent_end", output: "Pipeline complete." });
     return { featureId, finalState: state };
   } finally {
     await stateClient.close();

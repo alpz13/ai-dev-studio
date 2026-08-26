@@ -86,7 +86,7 @@ describe('Feature State MCP Server', () => {
         params: { name: 'get_feature_state', arguments: { featureId: 'feat_missing' } },
       });
 
-      expect(result.content[0].text).toContain('No existe estado para');
+      expect(result.content[0].text).toContain('No state exists for');
       expect(result.content[0].text).toContain('feat_missing');
     });
   });
@@ -131,6 +131,6 @@ describe('Feature State MCP Server', () => {
     const handler = capturedHandlers.get(CallToolRequestSchema) as Function;
     const result = await handler({ params: { name: 'unknown_tool', arguments: {} } });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Herramienta desconocida');
+    expect(result.content[0].text).toContain('Unknown tool');
   });
 });

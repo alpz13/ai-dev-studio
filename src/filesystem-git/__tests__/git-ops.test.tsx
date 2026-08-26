@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { writeTextFile } from "../../filesystem-git/fs-ops.js";
 import { gitAdd, gitCommit, gitDiff, gitInitIfNeeded, gitStatus } from "../../filesystem-git/git-ops.js";
 
-// Estas pruebas corren git de verdad (vía child_process) contra un repo real
-// en un directorio temporal — sin mocks, sin red.
+// These tests run real git (via child_process) against a real repo
+// in a temporary directory — no mocks, no network.
 describe("filesystem-git/git-ops", () => {
   let root: string;
 
@@ -18,7 +18,7 @@ describe("filesystem-git/git-ops", () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it("gitInitIfNeeded inicializa un repo nuevo y es idempotente", async () => {
+  it("gitInitIfNeeded initializes a new repo and is idempotent", async () => {
     await expect(gitInitIfNeeded(root)).resolves.toBe(true);
 
     const gitDir = await fs.stat(path.join(root, ".git"));
@@ -27,33 +27,33 @@ describe("filesystem-git/git-ops", () => {
     await expect(gitInitIfNeeded(root)).resolves.toBe(false);
   });
 
-  it("gitStatus refleja un archivo sin trackear", async () => {
+  it("gitStatus reflects an untracked file", async () => {
     await gitInitIfNeeded(root);
-    await writeTextFile(root, "hello.txt", "hola\n");
+    await writeTextFile(root, "hello.txt", "hello\n");
 
     const status = await gitStatus(root);
 
     expect(status).toMatch(/hello\.txt/);
   });
 
-  it("gitAdd + gitCommit crean un commit y limpian el status", async () => {
+  it("gitAdd + gitCommit create a commit and clear the status", async () => {
     await gitInitIfNeeded(root);
-    await writeTextFile(root, "hello.txt", "hola\n");
+    await writeTextFile(root, "hello.txt", "hello\n");
 
     await gitAdd(root, ["."]);
-    const sha = await gitCommit(root, "feat: agregar hello.txt");
+    const sha = await gitCommit(root, "feat: add hello.txt");
 
     expect(sha).toMatch(/^[0-9a-f]{40}$/);
     await expect(gitStatus(root)).resolves.toBe("");
   });
 
-  it("gitCommit sin nada en staging rechaza con un error legible", async () => {
+  it("gitCommit with nothing staged rejects with a readable error", async () => {
     await gitInitIfNeeded(root);
 
-    await expect(gitCommit(root, "commit vacío")).rejects.toThrow(/falló/);
+    await expect(gitCommit(root, "empty commit")).rejects.toThrow(/failed/);
   });
 
-  it("gitDiff detecta cambios contra HEAD después de un commit", async () => {
+  it("gitDiff detects changes against HEAD after a commit", async () => {
     await gitInitIfNeeded(root);
     await writeTextFile(root, "hello.txt", "v1\n");
     await gitAdd(root, ["."]);
@@ -66,7 +66,7 @@ describe("filesystem-git/git-ops", () => {
     expect(diff).toMatch(/v2/);
   });
 
-  it("gitDiff con staged:true refleja lo que está en el staging area", async () => {
+  it("gitDiff with staged:true reflects what's in the staging area", async () => {
     await gitInitIfNeeded(root);
     await writeTextFile(root, "hello.txt", "v1\n");
 
@@ -76,7 +76,7 @@ describe("filesystem-git/git-ops", () => {
     expect(stagedDiff).toMatch(/hello\.txt/);
   });
 
-  it("gitDiff sin cambios devuelve string vacío", async () => {
+  it("gitDiff with no changes returns an empty string", async () => {
     await gitInitIfNeeded(root);
     await writeTextFile(root, "hello.txt", "v1\n");
     await gitAdd(root, ["."]);

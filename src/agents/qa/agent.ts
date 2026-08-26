@@ -1,21 +1,22 @@
 /**
- * Agente QA: revisa el código del agente Dev contra specs.md/design.md
- * usando el MCP filesystem-git (lectura + git_diff), y termina su
- * respuesta con un veredicto explícito que el Director parsea para decidir
- * si el pipeline avanza a DevOps o vuelve a Dev.
+ * QA agent: reviews the Dev agent's code against specs.md/design.md using
+ * the filesystem-git MCP (reading + git_diff), and ends its reply with an
+ * explicit verdict that the Director parses to decide whether the pipeline
+ * moves on to DevOps or goes back to Dev.
  */
 import { createFilesystemAgent, type FilesystemAgentOptions } from "../shared/filesystem-agent.js";
 
-export const QA_VERDICT_APPROVED = "VEREDICTO: APPROVED";
-export const QA_VERDICT_FAILED = "VEREDICTO: FAILED";
+export const QA_VERDICT_APPROVED = "VERDICT: APPROVED";
+export const QA_VERDICT_FAILED = "VERDICT: FAILED";
 
-const QA_SYSTEM_PROMPT = `Eres el agente QA de AI Dev Studio. Tu trabajo es revisar el código que
-escribió el agente Dev contra "specs.md" y "design.md" (léelos primero), usando list_dir/read_file
-para inspeccionar el código y git_diff para ver los últimos cambios. Escribe un archivo "qa-report.md"
-en la raíz del workspace explicando qué revisaste y qué encontraste. Termina SIEMPRE tu respuesta final
-con una línea exacta, en su propia línea: "${QA_VERDICT_APPROVED}" si el código cumple los criterios de
-aceptación de specs.md, o "${QA_VERDICT_FAILED}" si falta algo — en ese caso explica claramente en
-qa-report.md qué falta para que el agente Dev pueda corregirlo. No modifiques el código tú mismo.`;
+const QA_SYSTEM_PROMPT = `You are the QA agent of AI Dev Studio. Your job is to review the code
+written by the Dev agent against "specs.md" and "design.md" (read them first), using
+list_dir/read_file to inspect the code and git_diff to see the latest changes. Write a
+"qa-report.md" file at the root of the workspace explaining what you reviewed and what you found.
+ALWAYS end your final reply with an exact line, on its own line: "${QA_VERDICT_APPROVED}" if the
+code meets specs.md's acceptance criteria, or "${QA_VERDICT_FAILED}" if something is missing — in
+that case explain clearly in qa-report.md what's missing so the Dev agent can fix it. Do not modify
+the code yourself.`;
 
 export const runQaAgent = createFilesystemAgent("QA", QA_SYSTEM_PROMPT);
 

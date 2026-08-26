@@ -1,7 +1,7 @@
 /**
- * Wrapper de git vía el CLI del sistema (child_process), sin depender de
- * ningún paquete npm extra — así esto corre igual en cualquier máquina que
- * ya tenga git instalado, sin sumar otra dependencia que verificar.
+ * Git wrapper via the system CLI (child_process), without depending on
+ * any extra npm package — this way it runs the same on any machine that
+ * already has git installed, without adding another dependency to check.
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -20,11 +20,11 @@ async function runGit(root: string, args: string[]): Promise<{ stdout: string; s
     return { stdout: stdout.trim(), stderr: stderr.trim() };
   } catch (err) {
     const e = err as ExecError;
-    throw new Error(`git ${args.join(" ")} falló: ${e.stderr || e.message}`);
+    throw new Error(`git ${args.join(" ")} failed: ${e.stderr || e.message}`);
   }
 }
 
-/** Inicializa el repo si `root` todavía no es uno. Devuelve true si lo acaba de crear. */
+/** Initializes the repo if `root` isn't one yet. Returns true if it just created it. */
 export async function gitInitIfNeeded(root: string): Promise<boolean> {
   try {
     await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root });
@@ -45,8 +45,8 @@ export async function gitAdd(root: string, paths: string[] = ["."]): Promise<voi
 }
 
 export async function gitCommit(root: string, message: string): Promise<string> {
-  // Autor mínimo por si el repo no trae user.name/user.email configurados
-  // (típico en una máquina/contenedor de práctica recién iniciado).
+  // Minimal author in case the repo doesn't have user.name/user.email configured
+  // (typical on a freshly started practice machine/container).
   await runGit(root, [
     "-c",
     "user.email=dev-agent@ai-dev-studio.local",

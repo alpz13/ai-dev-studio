@@ -16,25 +16,25 @@ describe("filesystem-git/fs-ops", () => {
   });
 
   describe("resolveSafePath", () => {
-    it("permite una ruta relativa dentro del workspace", () => {
+    it("allows a relative path inside the workspace", () => {
       expect(resolveSafePath(root, "a/b.txt")).toBe(path.resolve(root, "a/b.txt"));
     });
 
-    it("permite la raíz misma ('.')", () => {
+    it("allows the root itself ('.')", () => {
       expect(resolveSafePath(root, ".")).toBe(path.resolve(root));
     });
 
-    it("bloquea un path traversal relativo", () => {
-      expect(() => resolveSafePath(root, "../fuera.txt")).toThrow(/fuera del workspace/);
+    it("blocks a relative path traversal", () => {
+      expect(() => resolveSafePath(root, "../fuera.txt")).toThrow(/outside the allowed workspace/);
     });
 
-    it("bloquea una ruta absoluta fuera del workspace", () => {
-      expect(() => resolveSafePath(root, "/etc/passwd")).toThrow(/fuera del workspace/);
+    it("blocks an absolute path outside the workspace", () => {
+      expect(() => resolveSafePath(root, "/etc/passwd")).toThrow(/outside the allowed workspace/);
     });
   });
 
   describe("ensureRoot / writeTextFile / readTextFile", () => {
-    it("crea la carpeta raíz si no existe, incluidas intermedias", async () => {
+    it("creates the root folder if it doesn't exist, including intermediate ones", async () => {
       const nested = path.join(root, "nested", "dir");
 
       await ensureRoot(nested);
@@ -43,36 +43,36 @@ describe("filesystem-git/fs-ops", () => {
       expect(stat.isDirectory()).toBe(true);
     });
 
-    it("escribe y lee un archivo de texto dentro del workspace", async () => {
-      await writeTextFile(root, "hello.txt", "hola\n");
+    it("writes and reads a text file inside the workspace", async () => {
+      await writeTextFile(root, "hello.txt", "hello\n");
 
-      await expect(readTextFile(root, "hello.txt")).resolves.toBe("hola\n");
+      await expect(readTextFile(root, "hello.txt")).resolves.toBe("hello\n");
     });
 
-    it("crea carpetas intermedias al escribir en una subruta", async () => {
+    it("creates intermediate folders when writing to a subpath", async () => {
       await writeTextFile(root, "a/b/c.txt", "contenido");
 
       await expect(readTextFile(root, "a/b/c.txt")).resolves.toBe("contenido");
     });
 
-    it("escribir sobre un archivo existente lo sobreescribe", async () => {
+    it("writing over an existing file overwrites it", async () => {
       await writeTextFile(root, "hello.txt", "v1");
       await writeTextFile(root, "hello.txt", "v2");
 
       await expect(readTextFile(root, "hello.txt")).resolves.toBe("v2");
     });
 
-    it("leer un archivo inexistente rechaza", async () => {
+    it("reading a nonexistent file rejects", async () => {
       await expect(readTextFile(root, "no-existe.txt")).rejects.toThrow();
     });
 
-    it("escribir fuera del workspace rechaza en vez de escribir en disco", async () => {
-      await expect(writeTextFile(root, "../fuera.txt", "x")).rejects.toThrow(/fuera del workspace/);
+    it("writing outside the workspace rejects instead of writing to disk", async () => {
+      await expect(writeTextFile(root, "../fuera.txt", "x")).rejects.toThrow(/outside the allowed workspace/);
     });
   });
 
   describe("listDirEntries", () => {
-    it("lista archivos y carpetas con su tipo", async () => {
+    it("lists files and folders with their type", async () => {
       await writeTextFile(root, "file.txt", "x");
       await fs.mkdir(path.join(root, "carpeta"));
 
@@ -82,7 +82,7 @@ describe("filesystem-git/fs-ops", () => {
       expect(entries).toContainEqual({ name: "carpeta", type: "dir" });
     });
 
-    it("por default lista la raíz del workspace", async () => {
+    it("lists the workspace root by default", async () => {
       await writeTextFile(root, "solo.txt", "x");
 
       const entries = await listDirEntries(root);
@@ -90,7 +90,7 @@ describe("filesystem-git/fs-ops", () => {
       expect(entries.some((e) => e.name === "solo.txt")).toBe(true);
     });
 
-    it("una carpeta vacía devuelve []", async () => {
+    it("an empty folder returns []", async () => {
       await fs.mkdir(path.join(root, "vacia"));
 
       const entries = await listDirEntries(root, "vacia");

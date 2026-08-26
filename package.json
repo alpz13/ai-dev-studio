@@ -2,7 +2,7 @@
   "name": "ai-dev-studio",
   "version": "0.1.0",
   "private": true,
-  "description": "Estudio de desarrollo simulado por agentes de IA — proyecto de práctica del stack de Anthropic (TS SDK, Messages API, MCP, agentes, multi-agente, subagentes).",
+  "description": "Simulated software development studio run by AI agents — a practice project for the Anthropic stack (TS SDK, Messages API, MCP, agents, multi-agent, subagents).",
   "type": "module",
   "scripts": {
     "test:store": "tsx scripts/test-feature-state-store.ts",

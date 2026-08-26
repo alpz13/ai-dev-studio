@@ -1,8 +1,8 @@
 /**
- * Helpers puros para el loop agentic manual (Messages API + tool use):
- * separar bloques de texto/tool_use de una respuesta, y armar el bloque
- * tool_result que se manda de vuelta en el siguiente turno. Sin depender
- * de ningún SDK — solo del shape de contenido documentado de la API.
+ * Pure helpers for the manual agentic loop (Messages API + tool use):
+ * splitting text/tool_use blocks out of a response, and building the
+ * tool_result block sent back in the next turn. No dependency on any
+ * SDK — just the documented content shape of the API.
  */
 
 export interface ToolUseBlock {

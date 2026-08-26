@@ -1,6 +1,6 @@
 /**
- * Manual test of the Messages API wrapper. Requires ANTHROPIC_API_KEY in
- * .env (copy .env.example) and `npm install` done.
+ * Manual test for the Messages API wrapper. Requires ANTHROPIC_API_KEY in
+ * .env (copy .env.example) and `npm install` already run.
  *
  * Usage: npm run test:core
  */
@@ -15,7 +15,7 @@ async function main() {
   }
 
   console.log("== sendMessage (no streaming) ==");
-  const reply = await sendMessage("Answer in one sentence: what is the Model Context Protocol?");
+  const reply = await sendMessage("Answer in a single sentence: what is the Model Context Protocol?");
   console.log(reply);
 
   console.log("\n== streamMessage (with streaming) ==");

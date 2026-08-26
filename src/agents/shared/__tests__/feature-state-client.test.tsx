@@ -6,9 +6,9 @@ import {
   type FeatureStateToolsClient,
 } from "../../../agents/shared/feature-state-client.js";
 
-// getFeatureState/updateFeatureState/listPendingFeatures solo necesitan un
-// objeto con callTool (FeatureStateToolsClient) — se prueban con uno falso,
-// sin mockear ningún módulo.
+// getFeatureState/updateFeatureState/listPendingFeatures only need an
+// object with callTool (FeatureStateToolsClient) — they're tested with a
+// fake one, without mocking any module.
 function fakeClient(
   handler: (input: { name: string; arguments: Record<string, unknown> }) => {
     content: Array<{ text?: string }>;
@@ -18,9 +18,9 @@ function fakeClient(
   return { callTool: async (input) => handler(input) };
 }
 
-describe("agents/shared/feature-state-client: funciones puras (cliente falso)", () => {
+describe("agents/shared/feature-state-client: pure functions (fake client)", () => {
   describe("getFeatureState", () => {
-    it("parsea el JSON cuando la feature existe", async () => {
+    it("parses the JSON when the feature exists", async () => {
       const state = { featureId: "feat_x", title: "X", status: "in_progress", currentStage: "Dev", stages: {} };
       const client = fakeClient(() => ({ content: [{ text: JSON.stringify(state) }] }));
 
@@ -29,15 +29,15 @@ describe("agents/shared/feature-state-client: funciones puras (cliente falso)", 
       expect(result).toEqual(state);
     });
 
-    it("devuelve null cuando el server responde 'No existe estado'", async () => {
-      const client = fakeClient(() => ({ content: [{ text: 'No existe estado para "feat_no_existe".' }] }));
+    it("returns null when the server responds 'No state exists'", async () => {
+      const client = fakeClient(() => ({ content: [{ text: 'No state exists for "feat_no_existe".' }] }));
 
       const result = await getFeatureState(client, "feat_no_existe");
 
       expect(result).toBeNull();
     });
 
-    it("devuelve null si la tool respondió isError", async () => {
+    it("returns null if the tool responded isError", async () => {
       const client = fakeClient(() => ({ content: [{ text: "boom" }], isError: true }));
 
       const result = await getFeatureState(client, "feat_x");
@@ -45,11 +45,11 @@ describe("agents/shared/feature-state-client: funciones puras (cliente falso)", 
       expect(result).toBeNull();
     });
 
-    it("pasa el featureId correcto a la tool", async () => {
+    it("passes the correct featureId to the tool", async () => {
       let received: unknown;
       const client = fakeClient((input) => {
         received = input;
-        return { content: [{ text: "No existe estado" }] };
+        return { content: [{ text: "No state exists" }] };
       });
 
       await getFeatureState(client, "feat_especifico");
@@ -59,7 +59,7 @@ describe("agents/shared/feature-state-client: funciones puras (cliente falso)", 
   });
 
   describe("updateFeatureState", () => {
-    it("parsea el JSON devuelto por la tool", async () => {
+    it("parses the JSON returned by the tool", async () => {
       const state = { featureId: "feat_x", title: "X", status: "done", currentStage: "DevOps", stages: {} };
       const client = fakeClient(() => ({ content: [{ text: JSON.stringify(state) }] }));
 
@@ -68,13 +68,13 @@ describe("agents/shared/feature-state-client: funciones puras (cliente falso)", 
       expect(result).toEqual(state);
     });
 
-    it("lanza un error legible si la tool responde isError", async () => {
-      const client = fakeClient(() => ({ content: [{ text: "algo salió mal" }], isError: true }));
+    it("throws a readable error if the tool responds isError", async () => {
+      const client = fakeClient(() => ({ content: [{ text: "something went wrong" }], isError: true }));
 
-      await expect(updateFeatureState(client, { featureId: "feat_x" })).rejects.toThrow(/algo salió mal/);
+      await expect(updateFeatureState(client, { featureId: "feat_x" })).rejects.toThrow(/something went wrong/);
     });
 
-    it("pasa el input completo como arguments de la tool", async () => {
+    it("passes the full input as the tool's arguments", async () => {
       let received: unknown;
       const client = fakeClient((input) => {
         received = input;
@@ -91,7 +91,7 @@ describe("agents/shared/feature-state-client: funciones puras (cliente falso)", 
   });
 
   describe("listPendingFeatures", () => {
-    it("parsea el arreglo devuelto por la tool", async () => {
+    it("parses the array returned by the tool", async () => {
       const pending = [{ featureId: "feat_a", title: "A", status: "in_progress", currentStage: "Dev", stages: {} }];
       const client = fakeClient(() => ({ content: [{ text: JSON.stringify(pending) }] }));
 
@@ -100,7 +100,7 @@ describe("agents/shared/feature-state-client: funciones puras (cliente falso)", 
       expect(result).toEqual(pending);
     });
 
-    it("lanza un error legible si la tool responde isError", async () => {
+    it("throws a readable error if the tool responds isError", async () => {
       const client = fakeClient(() => ({ content: [{ text: "boom" }], isError: true }));
 
       await expect(listPendingFeatures(client)).rejects.toThrow(/boom/);
@@ -109,19 +109,17 @@ describe("agents/shared/feature-state-client: funciones puras (cliente falso)", 
 });
 
 describe("agents/shared/feature-state-client: connectFeatureStateClient", () => {
-  it("crea el transporte apuntando al server de feature-state y conecta el cliente", async () => {
+  it("creates the transport pointing at the feature-state server and connects the client", async () => {
     vi.resetModules();
 
     const connectMock = vi.fn().mockResolvedValue(undefined);
     vi.doMock("@modelcontextprotocol/sdk/client/index.js", () => ({
-      Client: vi.fn().mockImplementation(function () {
-        return { connect: connectMock };
-      }),
+      Client: vi.fn().mockImplementation(function () { return { connect: connectMock }; }),
     }));
 
     let lastTransportArgs: unknown;
     vi.doMock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
-      StdioClientTransport: vi.fn().mockImplementation(function (args: unknown) {
+      StdioClientTransport: vi.fn().mockImplementation(function (args) {
         lastTransportArgs = args;
         return { __args: args };
       }),

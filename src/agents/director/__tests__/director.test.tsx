@@ -4,29 +4,29 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeatureState, UpdateFeatureStateInput } from "../../../feature-state/store.js";
 
-// --- Mocks de los 5 agentes: el Director es orquestación determinista, así
-// que probarlo no requiere simular la Messages API en absoluto — solo
-// controlar qué "dice" cada agente (su string de resumen) y contar llamadas.
-const runPmAgentMock = vi.fn(async () => "pm listo");
-const runArchitectAgentMock = vi.fn(async () => "arquitecto listo");
-const runDevAgentMock = vi.fn(async () => "dev listo");
-const runQaAgentMock = vi.fn(async () => "todo bien\nVEREDICTO: APPROVED");
-const runDevopsAgentMock = vi.fn(async () => "devops listo");
+// --- Mocks of the 5 agents: the Director is deterministic orchestration,
+// so testing it doesn't require simulating the Messages API at all — just
+// controlling what each agent "says" (its summary string) and counting calls.
+const runPmAgentMock = vi.fn(async () => "pm ready");
+const runArchitectAgentMock = vi.fn(async () => "architect ready");
+const runDevAgentMock = vi.fn(async () => "dev ready");
+const runQaAgentMock = vi.fn(async () => "all good\nVERDICT: APPROVED");
+const runDevopsAgentMock = vi.fn(async () => "devops ready");
 
 vi.mock("../../../agents/pm/agent.js", () => ({ runPmAgent: runPmAgentMock }));
 vi.mock("../../../agents/architect/agent.js", () => ({ runArchitectAgent: runArchitectAgentMock }));
 vi.mock("../../../agents/dev/agent.js", () => ({ runDevAgent: runDevAgentMock }));
 vi.mock("../../../agents/qa/agent.js", () => ({
   runQaAgent: runQaAgentMock,
-  isQaApproved: (text: string) => /VEREDICTO: APPROVED/i.test(text),
+  isQaApproved: (text: string) => /VERDICT: APPROVED/i.test(text),
 }));
 vi.mock("../../../agents/devops/agent.js", () => ({ runDevopsAgent: runDevopsAgentMock }));
 
-// --- Mock del Feature State MCP client: un Map en memoria que replica el
-// merge superficial real de FeatureStateStore.upsertState (ver
-// src/feature-state/store.ts) para que el bug de reintento de QA (Dev
-// quedándose "done" y saltándose el reintento) sea detectable por estas
-// pruebas exactamente como se detectaría contra el servidor MCP real.
+// --- Mock of the Feature State MCP client: an in-memory Map that replicates
+// the real shallow merge from FeatureStateStore.upsertState (see
+// src/feature-state/store.ts) so the QA retry bug (Dev staying "done" and
+// the retry getting skipped) is detectable by these tests exactly as it
+// would be detected against the real MCP server.
 let featuresDb = new Map<string, FeatureState>();
 
 const closeMock = vi.fn(async () => {});
@@ -75,11 +75,11 @@ describe("agents/director/director: runDirector", () => {
 
     featuresDb = new Map();
 
-    runPmAgentMock.mockReset().mockResolvedValue("pm listo");
-    runArchitectAgentMock.mockReset().mockResolvedValue("arquitecto listo");
-    runDevAgentMock.mockReset().mockResolvedValue("dev listo");
-    runQaAgentMock.mockReset().mockResolvedValue("todo bien\nVEREDICTO: APPROVED");
-    runDevopsAgentMock.mockReset().mockResolvedValue("devops listo");
+    runPmAgentMock.mockReset().mockResolvedValue("pm ready");
+    runArchitectAgentMock.mockReset().mockResolvedValue("architect ready");
+    runDevAgentMock.mockReset().mockResolvedValue("dev ready");
+    runQaAgentMock.mockReset().mockResolvedValue("all good\nVERDICT: APPROVED");
+    runDevopsAgentMock.mockReset().mockResolvedValue("devops ready");
 
     connectFeatureStateClientMock.mockClear();
     getFeatureStateMock.mockClear();
@@ -92,8 +92,8 @@ describe("agents/director/director: runDirector", () => {
     delete process.env.LOGS_DIR;
   });
 
-  it("una feature nueva corre las 5 etapas en orden y termina en 'done'", async () => {
-    const result = await runDirector({ task: "Exportar reportes a CSV" });
+  it("a new feature runs the 5 stages in order and ends in 'done'", async () => {
+    const result = await runDirector({ task: "Export reports to CSV" });
 
     expect(result.finalState.status).toBe("done");
     for (const stage of STAGE_ORDER) {
@@ -106,16 +106,16 @@ describe("agents/director/director: runDirector", () => {
     expect(runDevopsAgentMock).toHaveBeenCalledTimes(1);
   });
 
-  it("al retomar una feature existente, se saltan las etapas ya 'done'", async () => {
+  it("when resuming an existing feature, stages already 'done' are skipped", async () => {
     const featureId = "feat_2026-08-24_resume-test";
     featuresDb.set(featureId, {
       featureId,
-      title: "Retomar esto",
+      title: "Resume this",
       status: "in_progress",
       currentStage: "Dev",
       stages: {
-        PM: { status: "done", artifact: "specs.md", notes: "pm listo" },
-        Arquitecto: { status: "done", artifact: "design.md", notes: "arquitecto listo" },
+        PM: { status: "done", artifact: "specs.md", notes: "pm ready" },
+        Architect: { status: "done", artifact: "design.md", notes: "architect ready" },
       },
       updatedAt: new Date().toISOString(),
     });
@@ -130,12 +130,12 @@ describe("agents/director/director: runDirector", () => {
     expect(result.finalState.status).toBe("done");
   });
 
-  it("si QA falla una vez y luego aprueba, Dev corre dos veces y termina en 'done'", async () => {
+  it("if QA fails once and then approves, Dev runs twice and ends in 'done'", async () => {
     runQaAgentMock
-      .mockResolvedValueOnce("hay problemas\nVEREDICTO: FAILED")
-      .mockResolvedValueOnce("ahora sí\nVEREDICTO: APPROVED");
+      .mockResolvedValueOnce("there are issues\nVERDICT: FAILED")
+      .mockResolvedValueOnce("now it's good\nVERDICT: APPROVED");
 
-    const result = await runDirector({ task: "Feature con un round de QA" });
+    const result = await runDirector({ task: "Feature with one QA round" });
 
     expect(runDevAgentMock).toHaveBeenCalledTimes(2);
     expect(runQaAgentMock).toHaveBeenCalledTimes(2);
@@ -144,16 +144,16 @@ describe("agents/director/director: runDirector", () => {
     expect(result.finalState.stages.Dev?.status).toBe("done");
     expect(result.finalState.stages.QA?.status).toBe("done");
 
-    // La segunda vez que Dev corre, el task le avisa explícitamente que QA
-    // encontró problemas (y no repite el prompt inicial de implementación).
+    // The second time Dev runs, the task explicitly tells it that QA found
+    // issues (and doesn't repeat the initial implementation prompt).
     const secondDevTask = runDevAgentMock.mock.calls[1][0].task as string;
     expect(secondDevTask).toMatch(/qa-report\.md/i);
   });
 
-  it("si QA sigue fallando más allá de MAX_QA_RETRIES, la feature queda 'blocked' y DevOps no corre", async () => {
-    runQaAgentMock.mockResolvedValue("sigue fallando\nVEREDICTO: FAILED");
+  it("if QA keeps failing past MAX_QA_RETRIES, the feature ends up 'blocked' and DevOps doesn't run", async () => {
+    runQaAgentMock.mockResolvedValue("still failing\nVERDICT: FAILED");
 
-    const result = await runDirector({ task: "Feature que nunca pasa QA" });
+    const result = await runDirector({ task: "Feature that never passes QA" });
 
     expect(result.finalState.status).toBe("blocked");
     expect(result.finalState.stages.QA?.status).toBe("failed");
@@ -163,31 +163,31 @@ describe("agents/director/director: runDirector", () => {
     expect(closeMock).toHaveBeenCalled();
   });
 
-  it("si una etapa lanza un error, la feature queda 'blocked' con el mensaje en notes", async () => {
-    runArchitectAgentMock.mockRejectedValueOnce(new Error("boom: no se pudo escribir design.md"));
+  it("if a stage throws an error, the feature ends up 'blocked' with the message in notes", async () => {
+    runArchitectAgentMock.mockRejectedValueOnce(new Error("boom: couldn't write design.md"));
 
-    const result = await runDirector({ task: "Feature que explota en Arquitecto" });
+    const result = await runDirector({ task: "Feature that blows up in Architect" });
 
     expect(result.finalState.status).toBe("blocked");
-    expect(result.finalState.stages.Arquitecto?.status).toBe("failed");
-    expect(result.finalState.stages.Arquitecto?.notes).toMatch(/boom/);
+    expect(result.finalState.stages.Architect?.status).toBe("failed");
+    expect(result.finalState.stages.Architect?.notes).toMatch(/boom/);
     expect(result.finalState.stages.PM?.status).toBe("done");
     expect(runDevAgentMock).not.toHaveBeenCalled();
     expect(closeMock).toHaveBeenCalled();
   });
 
-  it("rechaza si no se da ni featureId ni task, sin llegar a conectar al feature-state MCP", async () => {
-    await expect(runDirector({})).rejects.toThrow(/necesita featureId.*task/i);
+  it("rejects if neither featureId nor task is given, without ever connecting to the feature-state MCP", async () => {
+    await expect(runDirector({})).rejects.toThrow(/needs featureId.*task/i);
     expect(connectFeatureStateClientMock).not.toHaveBeenCalled();
   });
 
-  it("un featureId inexistente sin task rechaza con un mensaje claro, y aun así cierra el client", async () => {
-    await expect(runDirector({ featureId: "feat_no_existe" })).rejects.toThrow(/No existe la feature/);
+  it("a nonexistent featureId with no task rejects with a clear message, and still closes the client", async () => {
+    await expect(runDirector({ featureId: "feat_does_not_exist" })).rejects.toThrow(/doesn't exist/);
     expect(closeMock).toHaveBeenCalled();
   });
 
-  it("registra trazas del Director con agentRole 'Director' bajo el featureId como traceId", async () => {
-    const result = await runDirector({ task: "Feature para revisar trazas" });
+  it("logs Director traces with agentRole 'Director' under the featureId as traceId", async () => {
+    const result = await runDirector({ task: "Feature to check traces" });
 
     const logger = new TraceLogger(logsDir);
     const events = await logger.readTrace(result.featureId);

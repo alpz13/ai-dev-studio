@@ -1,18 +1,18 @@
 /**
- * Trazas por feature/agente — ver ARCHITECTURE.md sección 3.
+ * Traces per feature/agent — see ARCHITECTURE.md section 3.
  *
- * traceId = featureId, spanId = un turno/invocación de un agente,
- * parentSpanId = quién lo invocó (útil más adelante para subagentes
- * anidados). Un archivo JSONL append-only por featureId en logs/.
+ * traceId = featureId, spanId = one turn/invocation of an agent,
+ * parentSpanId = who invoked it (useful later on for nested
+ * subagents). One append-only JSONL file per featureId in logs/.
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
 export type TraceEventType = "agent_start" | "agent_end" | "tool_call" | "tool_result" | "message" | "error";
 
-// OJO: TraceEventInput se define de forma explícita (no vía Omit<TraceEvent, "timestamp">)
-// porque combinar propiedades nombradas con un índice de firma [k: string]: unknown
-// hace que `keyof` colapse a `string`, y Pick/Omit dejan de "ver" los campos reales.
+// NOTE: TraceEventInput is defined explicitly (not via Omit<TraceEvent, "timestamp">)
+// because combining named properties with an index signature [k: string]: unknown
+// makes `keyof` collapse to `string`, so Pick/Omit stop "seeing" the real fields.
 export interface TraceEventBase {
   traceId: string;
   spanId: string;
@@ -21,10 +21,10 @@ export interface TraceEventBase {
   event: TraceEventType;
 }
 
-// El contexto reusable que un agente arma una sola vez (traceId/spanId/
-// agentRole) y luego reparte en cada llamada a log(), sumando `event` cada
-// vez — por eso NO lleva `event` (a diferencia de TraceEventBase). Ver
-// src/agents/shared/run-agent-loop.ts para el caso de uso.
+// The reusable context an agent builds once (traceId/spanId/agentRole)
+// and then passes to every log() call, adding `event` each time — that's
+// why it does NOT carry `event` (unlike TraceEventBase). See
+// src/agents/shared/run-agent-loop.ts for the use case.
 export type TraceContext = Omit<TraceEventBase, "event">;
 
 export type TraceEventInput = TraceEventBase & { [extra: string]: unknown };
@@ -67,7 +67,7 @@ export class TraceLogger {
 }
 
 let counter = 0;
-/** Id de span legible y único dentro del proceso, ej. agt_dev_1755882012345_1 */
+/** Human-readable span id, unique within the process, e.g. agt_dev_1755882012345_1 */
 export function newSpanId(prefix: string): string {
   counter += 1;
   return `${prefix}_${Date.now()}_${counter}`;

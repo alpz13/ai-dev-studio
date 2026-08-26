@@ -7,9 +7,7 @@ vi.mock("dotenv/config", () => ({}));
 
 const createMock = vi.fn();
 vi.mock("@anthropic-ai/sdk", () => ({
-  default: vi.fn().mockImplementation(function () {
-    return { messages: { create: createMock } };
-  }),
+  default: vi.fn().mockImplementation(function () { return { messages: { create: createMock } }; }),
 }));
 
 vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
@@ -24,9 +22,7 @@ vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
 }));
 
 vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
-  StdioClientTransport: vi.fn().mockImplementation(function (opts: unknown) {
-    return { __opts: opts };
-  }),
+  StdioClientTransport: vi.fn().mockImplementation(function (opts) { return { __opts: opts }; }),
 }));
 
 const { runDevopsAgent } = await import("../../../agents/devops/agent.js");
@@ -41,7 +37,7 @@ describe("agents/devops/agent: runDevopsAgent", () => {
     process.env.LOGS_DIR = logsDir;
     process.env.ANTHROPIC_API_KEY = "test-key";
     createMock.mockReset();
-    createMock.mockResolvedValue({ content: [{ type: "text", text: "changelog listo" }], stop_reason: "end_turn" });
+    createMock.mockResolvedValue({ content: [{ type: "text", text: "changelog ready" }], stop_reason: "end_turn" });
   });
 
   afterEach(async () => {
@@ -49,19 +45,19 @@ describe("agents/devops/agent: runDevopsAgent", () => {
     delete process.env.LOGS_DIR;
   });
 
-  it("loguea sus eventos con agentRole 'DevOps'", async () => {
-    await runDevopsAgent({ featureId, task: "cierra esto", workspaceRoot: `workspaces/${featureId}` });
+  it("logs its events with agentRole 'DevOps'", async () => {
+    await runDevopsAgent({ featureId, task: "wrap this up", workspaceRoot: `workspaces/${featureId}` });
 
     const logger = new TraceLogger(logsDir);
     const events = await logger.readTrace(featureId);
     expect(events.every((e) => e.agentRole === "DevOps")).toBe(true);
   });
 
-  it("el system prompt le pide un CHANGELOG.md y aclara que no hay despliegue real", async () => {
-    await runDevopsAgent({ featureId, task: "algo", workspaceRoot: `workspaces/${featureId}` });
+  it("the system prompt asks for a CHANGELOG.md and clarifies there's no real deployment", async () => {
+    await runDevopsAgent({ featureId, task: "something", workspaceRoot: `workspaces/${featureId}` });
 
     const system = createMock.mock.calls[0][0].system as string;
     expect(system).toMatch(/CHANGELOG\.md/);
-    expect(system).toMatch(/no hay un paso de despliegue real/i);
+    expect(system).toMatch(/no real deployment step/i);
   });
 });

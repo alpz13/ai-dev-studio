@@ -1,33 +1,33 @@
 /**
- * CLI para correr el agente Dev solo (sin Director, Fase 2 del roadmap).
+ * CLI to run the Dev agent standalone (without the Director, roadmap Phase 2).
  *
- * Uso:
+ * Usage:
  *   npm run agent:dev
- *   npm run agent:dev -- feat_mi-feature "Crea un archivo README.md que explique este workspace"
+ *   npm run agent:dev -- feat_my-feature "Create a README.md file explaining this workspace"
  */
 import { runDevAgent } from "../src/agents/dev/agent.js";
 
 async function main() {
   if (!process.env.ANTHROPIC_API_KEY) {
-    console.error("Falta ANTHROPIC_API_KEY. Copia .env.example a .env y pon tu API key.");
+    console.error("Missing ANTHROPIC_API_KEY. Copy .env.example to .env and set your API key.");
     process.exit(1);
   }
 
   const featureId = process.argv[2] ?? "feat_demo_hello-dev-agent";
   const task =
     process.argv[3] ??
-    "Crea un archivo hello.txt con el texto 'Hola desde el Dev agent' y confírmalo con un commit de git.";
+    "Create a hello.txt file with the text 'Hello from the Dev agent' and confirm it with a git commit.";
   const workspaceRoot = `workspaces/${featureId}`;
 
   console.log(`== Dev agent — feature: ${featureId} ==`);
-  console.log(`Tarea: ${task}`);
+  console.log(`Task: ${task}`);
   console.log(`Workspace: ${workspaceRoot}\n`);
 
   const summary = await runDevAgent({ featureId, task, workspaceRoot });
 
-  console.log("\n== Resumen del agente ==");
+  console.log("\n== Agent summary ==");
   console.log(summary);
-  console.log(`\nRevisa el workspace en ./${workspaceRoot} y la traza en ./logs/${featureId}.jsonl`);
+  console.log(`\nCheck the workspace at ./${workspaceRoot} and the trace at ./logs/${featureId}.jsonl`);
 }
 
 main().catch((err) => {

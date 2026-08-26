@@ -17,11 +17,11 @@ describe("feature-state/store: FeatureStateStore", () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it("readState de una feature inexistente devuelve null", async () => {
+  it("readState of a nonexistent feature returns null", async () => {
     await expect(store.readState("feat_no_existe")).resolves.toBeNull();
   });
 
-  it("upsertState crea una feature nueva con los valores dados", async () => {
+  it("upsertState creates a new feature with the given values", async () => {
     const created = await store.upsertState({
       featureId: "feat_demo_export-csv",
       title: "Exportar reportes a CSV",
@@ -36,7 +36,7 @@ describe("feature-state/store: FeatureStateStore", () => {
     expect(typeof created.updatedAt).toBe("string");
   });
 
-  it("upsertState usa defaults razonables cuando solo se da featureId", async () => {
+  it("upsertState uses sensible defaults when only featureId is given", async () => {
     const created = await store.upsertState({ featureId: "feat_x" });
 
     expect(created.title).toBe("feat_x");
@@ -45,7 +45,7 @@ describe("feature-state/store: FeatureStateStore", () => {
     expect(created.stages).toEqual({});
   });
 
-  it("persiste de verdad a disco: leer después de escribir da lo mismo que se escribió", async () => {
+  it("actually persists to disk: reading after writing gives back what was written", async () => {
     const created = await store.upsertState({
       featureId: "feat_demo",
       stages: { Dev: { status: "in_progress" } },
@@ -56,12 +56,12 @@ describe("feature-state/store: FeatureStateStore", () => {
     expect(reread).toEqual(created);
   });
 
-  it("el merge superficial conserva los stages previos al actualizar solo uno", async () => {
+  it("the shallow merge preserves previous stages when updating only one", async () => {
     await store.upsertState({
       featureId: "feat_demo",
       stages: {
         PM: { status: "done", artifact: "specs.md" },
-        Arquitecto: { status: "done", artifact: "design.md" },
+        Architect: { status: "done", artifact: "design.md" },
       },
     });
 
@@ -73,12 +73,12 @@ describe("feature-state/store: FeatureStateStore", () => {
     });
 
     expect(afterQaFail.stages.PM?.status).toBe("done");
-    expect(afterQaFail.stages.Arquitecto?.status).toBe("done");
+    expect(afterQaFail.stages.Architect?.status).toBe("done");
     expect(afterQaFail.stages.QA).toEqual({ status: "failed", notes: "2 tests failing" });
     expect(afterQaFail.status).toBe("blocked");
   });
 
-  it("listFeatures ignora archivos sueltos que no son carpetas de feature", async () => {
+  it("listFeatures ignores stray files that aren't feature folders", async () => {
     await store.upsertState({ featureId: "feat_a" });
     await fs.writeFile(path.join(root, "un-archivo-suelto.txt"), "ruido");
 
@@ -87,7 +87,7 @@ describe("feature-state/store: FeatureStateStore", () => {
     expect(all.map((f) => f.featureId)).toEqual(["feat_a"]);
   });
 
-  it("listPending filtra las features con status 'done'", async () => {
+  it("listPending filters out features with status 'done'", async () => {
     await store.upsertState({ featureId: "feat_activa", status: "in_progress" });
     await store.upsertState({ featureId: "feat_terminada", status: "done" });
 
@@ -99,11 +99,11 @@ describe("feature-state/store: FeatureStateStore", () => {
 });
 
 describe("feature-state/store: resolveFeaturesDir", () => {
-  it("resuelve una ruta relativa contra cwd", () => {
+  it("resolves a relative path against cwd", () => {
     expect(resolveFeaturesDir("features")).toBe(path.resolve(process.cwd(), "features"));
   });
 
-  it("respeta una ruta absoluta tal cual", () => {
+  it("keeps an absolute path as-is", () => {
     const abs = path.resolve(os.tmpdir(), "algun-dir");
     expect(resolveFeaturesDir(abs)).toBe(abs);
   });

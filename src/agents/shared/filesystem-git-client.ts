@@ -1,8 +1,8 @@
 /**
- * Conecta como cliente MCP al servidor filesystem-git, lanzándolo como
- * subproceso apuntado a un workspace específico. Extraído del agente Dev
- * (Fase 2) para que cualquier agente que necesite ese mismo MCP (PM,
- * Arquitecto, Dev, QA, DevOps) lo reutilice — ver filesystem-agent.ts.
+ * Connects as an MCP client to the filesystem-git server, launching it as
+ * a subprocess pointed at a specific workspace. Extracted from the Dev
+ * agent (Phase 2) so that any agent that needs this same MCP (PM,
+ * Architect, Dev, QA, DevOps) can reuse it — see filesystem-agent.ts.
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";

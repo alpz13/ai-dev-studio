@@ -1,13 +1,13 @@
 /**
- * El loop agentic manual (Messages API + tool use), extraído de lo que
- * originalmente vivía solo dentro del agente Dev (Fase 2), para que
- * cualquier agente basado en un MCP de herramientas (PM, Arquitecto, Dev,
- * QA, DevOps — Fase 3) lo reutilice sin duplicar la mecánica.
+ * The manual agentic loop (Messages API + tool use), extracted from what
+ * originally lived only inside the Dev agent (Phase 2), so that any agent
+ * built on a tool MCP (PM, Architect, Dev, QA, DevOps — Phase 3) can reuse
+ * it without duplicating the mechanics.
  *
- * A propósito recibe `anthropic` y `mcpClient` ya construidos/conectados
- * (inyección de dependencias) en vez de crearlos él mismo: así se puede
- * probar con objetos falsos simples, sin necesidad de mockear ningún
- * módulo de los SDKs.
+ * It deliberately receives `anthropic` and `mcpClient` already
+ * built/connected (dependency injection) instead of creating them itself:
+ * that way it can be tested with simple fake objects, without needing to
+ * mock any SDK module.
  */
 import type Anthropic from "@anthropic-ai/sdk";
 import type { TraceContext, TraceEventInput } from "../../observability/trace-logger.js";
@@ -17,10 +17,10 @@ import { mcpToolsToAnthropicTools } from "./mcp-tool-adapter.js";
 const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929";
 const DEFAULT_MAX_TURNS = 12;
 
-// Solo la porción de las interfaces de @anthropic-ai/sdk y
-// @modelcontextprotocol/sdk que este loop realmente usa — así el motor no
-// depende de los tipos exactos de ninguno de los dos SDKs, y una prueba
-// puede pasar un objeto plano que cumpla este shape sin instalar nada.
+// Only the portion of the @anthropic-ai/sdk and @modelcontextprotocol/sdk
+// interfaces that this loop actually uses — so the engine doesn't depend
+// on the exact types of either SDK, and a test can pass a plain object
+// matching this shape without installing anything.
 export interface AnthropicMessagesClient {
   messages: {
     create: (params: {
@@ -41,11 +41,29 @@ export interface McpToolsClient {
   }>;
 }
 
-// Igual que arriba: solo la porción de TraceLogger que el loop usa, para
-// poder probar con un logger falso (un array que va acumulando llamadas)
-// sin instanciar la clase real ni tocar su campo privado logsDir.
+// Same as above: only the portion of TraceLogger that the loop uses, so it
+// can be tested with a fake logger (an array that accumulates calls)
+// without instantiating the real class or touching its private logsDir
+// field.
 export interface TraceLoggerLike {
   log: (event: TraceEventInput) => Promise<unknown>;
+}
+
+// Phase 4 — SubAgents: a synthetic tool that does NOT come from the MCP.
+// The model sees it as just another tool (see below where it's added to
+// `tools`), but when it's invoked the loop doesn't ask the mcpClient — it
+// runs a separate subagent (see createFilesystemAgent in
+// filesystem-agent.ts) and returns its final summary as if it were the
+// tool's result. So it's the model itself, in the middle of its normal
+// loop, that decides whether it's worth delegating a portion of the task —
+// not a code rule.
+export interface SubagentToolConfig {
+  /** Name of the synthetic tool the model sees. Default: "delegate_to_subagent". */
+  name?: string;
+  /** Description the model sees — explains when delegating makes sense. */
+  description: string;
+  /** Runs the subagent and returns its final summary (or throws if it fails). */
+  run: (input: { module: string; task: string }) => Promise<string>;
 }
 
 export interface RunAgentLoopOptions {
@@ -57,16 +75,35 @@ export interface RunAgentLoopOptions {
   traceCtx: TraceContext;
   model?: string;
   maxTurns?: number;
+  subagentTool?: SubagentToolConfig;
 }
+
+const DEFAULT_SUBAGENT_TOOL_NAME = "delegate_to_subagent";
 
 export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<string> {
   const model = opts.model ?? DEFAULT_MODEL;
   const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
+  const subagentToolName = opts.subagentTool?.name ?? DEFAULT_SUBAGENT_TOOL_NAME;
 
   const { tools: mcpTools } = await opts.mcpClient.listTools();
   const tools = mcpToolsToAnthropicTools(
     mcpTools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
   );
+
+  if (opts.subagentTool) {
+    tools.push({
+      name: subagentToolName,
+      description: opts.subagentTool.description,
+      input_schema: {
+        type: "object",
+        properties: {
+          module: { type: "string", description: "Specific file or module the subagent will work on." },
+          task: { type: "string", description: "Specific, scoped task for that module." },
+        },
+        required: ["module", "task"],
+      },
+    });
+  }
 
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: opts.task }];
   let finalText = "";
@@ -94,19 +131,27 @@ export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<string> {
     for (const toolUse of toolUses) {
       await opts.traceLogger.log({ ...opts.traceCtx, event: "tool_call", tool: toolUse.name, input: toolUse.input });
       try {
-        const result = await opts.mcpClient.callTool({
-          name: toolUse.name,
-          arguments: toolUse.input as Record<string, unknown>,
-        });
-        const text = result.content.map((c) => c.text ?? "").join("\n");
-        await opts.traceLogger.log({
-          ...opts.traceCtx,
-          event: "tool_result",
-          tool: toolUse.name,
-          output: text,
-          isError: Boolean(result.isError),
-        });
-        resultBlocks.push(buildToolResultBlock(toolUse.id, text, Boolean(result.isError)));
+        let text: string;
+        let isError: boolean;
+
+        if (opts.subagentTool && toolUse.name === subagentToolName) {
+          // Delegation to a subagent instead of an MCP tool_call — see
+          // SubagentToolConfig above and createFilesystemAgent, which builds
+          // this `run()` with its own child spanId (parentSpanId = this agent).
+          const input = toolUse.input as { module?: unknown; task?: unknown };
+          text = await opts.subagentTool.run({ module: String(input.module ?? ""), task: String(input.task ?? "") });
+          isError = false;
+        } else {
+          const result = await opts.mcpClient.callTool({
+            name: toolUse.name,
+            arguments: toolUse.input as Record<string, unknown>,
+          });
+          text = result.content.map((c) => c.text ?? "").join("\n");
+          isError = Boolean(result.isError);
+        }
+
+        await opts.traceLogger.log({ ...opts.traceCtx, event: "tool_result", tool: toolUse.name, output: text, isError });
+        resultBlocks.push(buildToolResultBlock(toolUse.id, text, isError));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         await opts.traceLogger.log({ ...opts.traceCtx, event: "tool_result", tool: toolUse.name, output: message, isError: true });

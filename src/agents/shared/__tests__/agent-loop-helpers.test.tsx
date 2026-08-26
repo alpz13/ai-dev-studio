@@ -8,57 +8,57 @@ import {
 
 describe("agents/shared/agent-loop-helpers", () => {
   const mixedContent: ContentBlock[] = [
-    { type: "text", text: "Voy a revisar el estado del repo primero." },
+    { type: "text", text: "I'll check the repo status first." },
     { type: "tool_use", id: "toolu_1", name: "git_status", input: {} },
     { type: "tool_use", id: "toolu_2", name: "read_file", input: { path: "hello.txt" } },
   ];
 
   describe("extractToolUseBlocks", () => {
-    it("extrae solo los bloques tool_use, en orden", () => {
+    it("extracts only the tool_use blocks, in order", () => {
       const toolUses = extractToolUseBlocks(mixedContent);
 
       expect(toolUses).toHaveLength(2);
       expect(toolUses.map((t) => t.name)).toEqual(["git_status", "read_file"]);
     });
 
-    it("devuelve [] cuando no hay tool_use", () => {
-      expect(extractToolUseBlocks([{ type: "text", text: "listo" }])).toEqual([]);
+    it("returns [] when there is no tool_use", () => {
+      expect(extractToolUseBlocks([{ type: "text", text: "done" }])).toEqual([]);
     });
   });
 
   describe("extractText", () => {
-    it("concatena solo los bloques de texto", () => {
-      expect(extractText(mixedContent)).toBe("Voy a revisar el estado del repo primero.");
+    it("concatenates only the text blocks", () => {
+      expect(extractText(mixedContent)).toBe("I'll check the repo status first.");
     });
 
-    it("une varios bloques de texto con salto de línea", () => {
+    it("joins several text blocks with a line break", () => {
       const content: ContentBlock[] = [
-        { type: "text", text: "línea 1" },
-        { type: "text", text: "línea 2" },
+        { type: "text", text: "line 1" },
+        { type: "text", text: "line 2" },
       ];
 
-      expect(extractText(content)).toBe("línea 1\nlínea 2");
+      expect(extractText(content)).toBe("line 1\nline 2");
     });
 
-    it("devuelve string vacío si no hay texto", () => {
+    it("returns an empty string if there is no text", () => {
       expect(extractText([{ type: "tool_use", id: "x", name: "y", input: {} }])).toBe("");
     });
   });
 
   describe("buildToolResultBlock", () => {
-    it("arma un tool_result exitoso por default (is_error: false)", () => {
-      const block = buildToolResultBlock("toolu_1", "(sin cambios pendientes)");
+    it("builds a successful tool_result by default (is_error: false)", () => {
+      const block = buildToolResultBlock("toolu_1", "(no pending changes)");
 
       expect(block).toEqual({
         type: "tool_result",
         tool_use_id: "toolu_1",
-        content: "(sin cambios pendientes)",
+        content: "(no pending changes)",
         is_error: false,
       });
     });
 
-    it("arma un tool_result de error cuando se pide", () => {
-      const block = buildToolResultBlock("toolu_2", "Ruta fuera del workspace permitido", true);
+    it("builds an error tool_result when requested", () => {
+      const block = buildToolResultBlock("toolu_2", "Path outside the allowed workspace", true);
 
       expect(block.is_error).toBe(true);
     });

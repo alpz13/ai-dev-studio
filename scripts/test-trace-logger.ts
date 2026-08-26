@@ -1,6 +1,6 @@
 /**
- * Prueba de humo del TraceLogger (sin MCP, sin red).
- * Uso: tsx scripts/test-trace-logger.ts
+ * Smoke test for the TraceLogger (no MCP, no network).
+ * Usage: tsx scripts/test-trace-logger.ts
  */
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
@@ -29,20 +29,20 @@ async function main() {
   const emptyTrace = await logger.readTrace("feat_no_existe");
   assert.deepEqual(emptyTrace, []);
 
-  // Dos spanId generados en el mismo proceso no deben chocar.
+  // Two spanIds generated in the same process must not collide.
   const spanA = newSpanId("agt_dev");
   const spanB = newSpanId("agt_dev");
   assert.notEqual(spanA, spanB);
 
   await fs.rm(dir, { recursive: true, force: true });
 
-  console.log("✅ TraceLogger: escribe JSONL por feature y lo puede releer.");
-  console.log("   - los eventos conservan orden, timestamp y campos extra");
-  console.log("   - leer una traza inexistente devuelve []");
-  console.log("   - newSpanId no genera colisiones dentro del mismo proceso");
+  console.log("✅ TraceLogger: writes JSONL per feature and can read it back.");
+  console.log("   - events preserve order, timestamp, and extra fields");
+  console.log("   - reading a nonexistent trace returns []");
+  console.log("   - newSpanId doesn't produce collisions within the same process");
 }
 
 main().catch((err) => {
-  console.error("❌ Falló la prueba:", err);
+  console.error("❌ Test failed:", err);
   process.exit(1);
 });
