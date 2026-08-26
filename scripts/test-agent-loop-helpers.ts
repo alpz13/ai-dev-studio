@@ -1,7 +1,7 @@
 /**
- * Prueba de humo de la lógica pura del loop agentic: el adaptador de tools
- * MCP→Anthropic y los helpers de extracción/armado de bloques de contenido.
- * Uso: tsx scripts/test-agent-loop-helpers.ts
+ * Smoke test for the pure logic of the agentic loop: the MCP→Anthropic
+ * tool adapter and the content-block extraction/building helpers.
+ * Usage: tsx scripts/test-agent-loop-helpers.ts
  */
 import assert from "node:assert/strict";
 import { mcpToolsToAnthropicTools } from "../src/agents/shared/mcp-tool-adapter.js";
@@ -13,22 +13,22 @@ import {
 } from "../src/agents/shared/agent-loop-helpers.js";
 
 async function main() {
-  // 1. Adaptador de tools: nombre/descripción/schema se mapean 1:1, y una
-  //    tool sin descripción no debe romper el mapeo (Anthropic requiere string).
+  // 1. Tool adapter: name/description/schema map 1:1, and a tool with no
+  //    description must not break the mapping (Anthropic requires a string).
   const mcpTools = [
-    { name: "write_file", description: "Escribe un archivo", inputSchema: { type: "object" } },
+    { name: "write_file", description: "Writes a file", inputSchema: { type: "object" } },
     { name: "git_status", description: undefined, inputSchema: { type: "object" } },
   ];
   const anthropicTools = mcpToolsToAnthropicTools(mcpTools);
   assert.equal(anthropicTools.length, 2);
   assert.equal(anthropicTools[0].name, "write_file");
-  assert.equal(anthropicTools[0].description, "Escribe un archivo");
-  assert.equal(anthropicTools[1].description, "", "una tool sin description debe quedar como string vacío, no undefined");
+  assert.equal(anthropicTools[0].description, "Writes a file");
+  assert.equal(anthropicTools[1].description, "", "a tool with no description should end up as an empty string, not undefined");
 
-  // 2. extractToolUseBlocks / extractText separan correctamente una
-  //    respuesta mixta (texto + una o más tool_use).
+  // 2. extractToolUseBlocks / extractText correctly split a mixed response
+  //    (text + one or more tool_use blocks).
   const mixedContent: ContentBlock[] = [
-    { type: "text", text: "Voy a revisar el estado del repo primero." },
+    { type: "text", text: "I'll check the repo status first." },
     { type: "tool_use", id: "toolu_1", name: "git_status", input: {} },
     { type: "tool_use", id: "toolu_2", name: "read_file", input: { path: "hello.txt" } },
   ];
@@ -36,30 +36,30 @@ async function main() {
   assert.equal(toolUses.length, 2);
   assert.equal(toolUses[0].name, "git_status");
   assert.equal(toolUses[1].input && (toolUses[1].input as { path: string }).path, "hello.txt");
-  assert.equal(extractText(mixedContent), "Voy a revisar el estado del repo primero.");
+  assert.equal(extractText(mixedContent), "I'll check the repo status first.");
 
-  // 3. Una respuesta solo de texto (turno final) no debe traer tool_use.
-  const finalContent: ContentBlock[] = [{ type: "text", text: "Listo, hice commit de hello.txt." }];
+  // 3. A text-only response (final turn) must not carry any tool_use.
+  const finalContent: ContentBlock[] = [{ type: "text", text: "Done, committed hello.txt." }];
   assert.equal(extractToolUseBlocks(finalContent).length, 0);
-  assert.equal(extractText(finalContent), "Listo, hice commit de hello.txt.");
+  assert.equal(extractText(finalContent), "Done, committed hello.txt.");
 
-  // 4. buildToolResultBlock arma el shape que la API espera para el
-  //    siguiente turno, incluyendo el caso de error.
-  const okResult = buildToolResultBlock("toolu_1", "(sin cambios pendientes)");
+  // 4. buildToolResultBlock builds the shape the API expects for the next
+  //    turn, including the error case.
+  const okResult = buildToolResultBlock("toolu_1", "(no pending changes)");
   assert.equal(okResult.type, "tool_result");
   assert.equal(okResult.tool_use_id, "toolu_1");
   assert.equal(okResult.is_error, false);
 
-  const errResult = buildToolResultBlock("toolu_2", "Ruta fuera del workspace permitido", true);
+  const errResult = buildToolResultBlock("toolu_2", "Path outside the allowed workspace", true);
   assert.equal(errResult.is_error, true);
 
-  console.log("✅ Adaptador de tools y helpers del loop agentic: todo correcto.");
-  console.log("   - mapeo de tools MCP → Anthropic conserva name/description/input_schema");
-  console.log("   - separación de bloques texto vs tool_use funciona en respuestas mixtas y finales");
-  console.log("   - buildToolResultBlock arma el shape correcto, incluyendo is_error");
+  console.log("✅ Tool adapter and agentic loop helpers: all correct.");
+  console.log("   - MCP → Anthropic tool mapping preserves name/description/input_schema");
+  console.log("   - splitting text vs tool_use blocks works for mixed and final responses");
+  console.log("   - buildToolResultBlock builds the correct shape, including is_error");
 }
 
 main().catch((err) => {
-  console.error("❌ Falló la prueba:", err);
+  console.error("❌ Test failed:", err);
   process.exit(1);
 });

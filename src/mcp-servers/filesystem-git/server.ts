@@ -2,15 +2,15 @@
 /**
  * Filesystem + Git MCP Server.
  *
- * Le da a un agente (típicamente Dev) un workspace de archivos acotado y
- * versionado con git, expuesto como herramientas MCP: list_dir, read_file,
- * write_file, git_status, git_add, git_commit, git_diff.
+ * Gives an agent (typically Dev) a scoped file workspace versioned with
+ * git, exposed as MCP tools: list_dir, read_file, write_file, git_status,
+ * git_add, git_commit, git_diff.
  *
- * La raíz del workspace se fija por WORKSPACE_ROOT (env var); si no existe
- * o no es un repo de git todavía, se crea/inicializa solo al arrancar.
+ * The workspace root is set via WORKSPACE_ROOT (env var); if it doesn't
+ * exist yet or isn't a git repo yet, it's created/initialized on startup.
  *
- * Uso: tsx src/mcp-servers/filesystem-git/server.ts
- * (normalmente lo lanza un cliente MCP como subproceso por stdio, ver
+ * Usage: tsx src/mcp-servers/filesystem-git/server.ts
+ * (normally launched by an MCP client as a subprocess over stdio, see
  * src/agents/dev/agent.ts)
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -30,15 +30,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "list_dir",
-      description: "Lista archivos y carpetas dentro del workspace, relativo a su raíz.",
+      description: "Lists files and folders inside the workspace, relative to its root.",
       inputSchema: {
         type: "object",
-        properties: { path: { type: "string", description: "Ruta relativa, default '.'" } },
+        properties: { path: { type: "string", description: "Relative path, default '.'" } },
       },
     },
     {
       name: "read_file",
-      description: "Lee el contenido de un archivo de texto dentro del workspace.",
+      description: "Reads the contents of a text file inside the workspace.",
       inputSchema: {
         type: "object",
         properties: { path: { type: "string" } },
@@ -48,7 +48,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "write_file",
       description:
-        "Escribe (crea o sobreescribe) un archivo de texto dentro del workspace, creando carpetas intermedias si hace falta.",
+        "Writes (creates or overwrites) a text file inside the workspace, creating intermediate folders if needed.",
       inputSchema: {
         type: "object",
         properties: { path: { type: "string" }, content: { type: "string" } },
@@ -57,12 +57,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "git_status",
-      description: "Estado de git en formato porcelain (qué está sucio o en staging).",
+      description: "Git status in porcelain format (what's dirty or staged).",
       inputSchema: { type: "object", properties: {} },
     },
     {
       name: "git_add",
-      description: "Agrega archivos al staging area de git.",
+      description: "Adds files to the git staging area.",
       inputSchema: {
         type: "object",
         properties: {
@@ -72,7 +72,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "git_commit",
-      description: "Crea un commit con lo que esté en staging. Falla si no hay nada staged.",
+      description: "Creates a commit with what's currently staged. Fails if nothing is staged.",
       inputSchema: {
         type: "object",
         properties: { message: { type: "string" } },
@@ -81,7 +81,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "git_diff",
-      description: "Diff de los cambios (working tree vs HEAD; con staged=true, del staging area vs HEAD).",
+      description: "Diff of the changes (working tree vs HEAD; with staged=true, staging area vs HEAD).",
       inputSchema: {
         type: "object",
         properties: { staged: { type: "boolean" } },
@@ -113,18 +113,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return ok(await readTextFile(WORKSPACE_ROOT, String(args.path)));
       case "write_file":
         await writeTextFile(WORKSPACE_ROOT, String(args.path), String(args.content));
-        return ok(`Escrito: ${args.path}`);
+        return ok(`Written: ${args.path}`);
       case "git_status":
-        return ok((await gitStatus(WORKSPACE_ROOT)) || "(sin cambios pendientes)");
+        return ok((await gitStatus(WORKSPACE_ROOT)) || "(no pending changes)");
       case "git_add":
         await gitAdd(WORKSPACE_ROOT, (args.paths as string[] | undefined) ?? ["."]);
-        return ok("Archivos agregados al staging.");
+        return ok("Files added to staging.");
       case "git_commit":
-        return ok(`Commit creado: ${await gitCommit(WORKSPACE_ROOT, String(args.message))}`);
+        return ok(`Commit created: ${await gitCommit(WORKSPACE_ROOT, String(args.message))}`);
       case "git_diff":
-        return ok((await gitDiff(WORKSPACE_ROOT, { staged: Boolean(args.staged) })) || "(sin diferencias)");
+        return ok((await gitDiff(WORKSPACE_ROOT, { staged: Boolean(args.staged) })) || "(no differences)");
       default:
-        throw new Error(`Herramienta desconocida: ${name}`);
+        throw new Error(`Unknown tool: ${name}`);
     }
   } catch (err) {
     return fail(err);
@@ -136,10 +136,10 @@ async function main() {
   await gitInitIfNeeded(WORKSPACE_ROOT);
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`[filesystem-git-mcp] listo, workspace: ${WORKSPACE_ROOT}`);
+  console.error(`[filesystem-git-mcp] ready, workspace: ${WORKSPACE_ROOT}`);
 }
 
 main().catch((err) => {
-  console.error("[filesystem-git-mcp] error fatal:", err);
+  console.error("[filesystem-git-mcp] fatal error:", err);
   process.exit(1);
 });

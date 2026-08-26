@@ -79,7 +79,7 @@ src/
 
 ## Key Conventions
 
-- **Language**: All code comments, error messages, and documentation are in Spanish (this file is an exception, kept in English per repo convention for CLAUDE.md).
+- **Language**: The whole project, including this file, is in English.
 - **ESM**: `"type": "module"` + `"moduleResolution": "NodeNext"` — use `.js` extensions in imports even for `.ts` source files.
 - **No build step in dev**: `tsx` handles JIT transpilation; `dist/` is only for deployment.
 - **No extra deps for things the OS already provides**: git operations shell out to the system `git` CLI via `child_process` rather than adding an npm git library.

@@ -3,10 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mismo enfoque que __test__/mcp-servers/feature-state/server.test.tsx: se
-// mockea el SDK de MCP y se capturan los handlers registrados; fs-ops y
-// git-ops (con git real) corren sin mockear, contra un WORKSPACE_ROOT
-// temporal.
+// Same approach as __test__/mcp-servers/feature-state/server.test.tsx: the
+// MCP SDK is mocked and the registered handlers are captured; fs-ops and
+// git-ops (with real git) run unmocked, against a temporary WORKSPACE_ROOT.
 const LIST_TOOLS_SCHEMA = Symbol("ListToolsRequestSchema");
 const CALL_TOOL_SCHEMA = Symbol("CallToolRequestSchema");
 
@@ -33,9 +32,7 @@ vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
 }));
 
 vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
-  StdioServerTransport: vi.fn().mockImplementation(function () {
-    return {};
-  }),
+  StdioServerTransport: vi.fn().mockImplementation(function () { return {}; }),
 }));
 
 async function loadServerModule(workspaceRoot: string) {
@@ -43,18 +40,13 @@ async function loadServerModule(workspaceRoot: string) {
   process.env.WORKSPACE_ROOT = workspaceRoot;
   vi.resetModules();
   await import("../../../mcp-servers/filesystem-git/server.js");
-  // main() corre en segundo plano: esperamos a que gitInitIfNeeded cree el
-  // directorio .git en vez de usar un timeout fijo. Máximo 5s por si git
-  // no está disponible en el entorno (los tests de git fallarán igualmente,
-  // pero sin colgar la suite entera).
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline) {
-    try {
-      await fs.access(path.join(workspaceRoot, ".git"));
-      break;
-    } catch {
-      await new Promise((r) => setTimeout(r, 50));
-    }
+  // main() runs in the background: ensureRoot + gitInitIfNeeded (spawns a
+  // git subprocess) + mocked connect. Poll until connect is called so that
+  // git init has fully completed before the test continues — one tick is not
+  // enough on Windows where spawning a child process takes longer.
+  const deadline = Date.now() + 10_000;
+  while (connectMock.mock.calls.length === 0 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 20));
   }
 }
 
@@ -72,18 +64,16 @@ describe("mcp-servers/filesystem-git/server", () => {
   });
 
   afterEach(async () => {
-    // maxRetries/retryDelay maneja EBUSY en Windows cuando git todavía
-    // tiene handles abiertos al momento de limpiar el directorio temporal.
-    await fs.rm(workspaceRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+    await fs.rm(workspaceRoot, { recursive: true, force: true });
     delete process.env.WORKSPACE_ROOT;
   });
 
-  it("al arrancar deja el workspace inicializado como repo de git", async () => {
+  it("leaves the workspace initialized as a git repo on startup", async () => {
     const stat = await fs.stat(path.join(workspaceRoot, ".git"));
     expect(stat.isDirectory()).toBe(true);
   });
 
-  it("registra list_tools con las siete herramientas esperadas", async () => {
+  it("registers list_tools with the seven expected tools", async () => {
     const listToolsHandler = handlers.get(LIST_TOOLS_SCHEMA)!;
 
     const result = (await listToolsHandler({ params: { name: "" } })) as unknown as {
@@ -101,20 +91,20 @@ describe("mcp-servers/filesystem-git/server", () => {
     ]);
   });
 
-  it("write_file + read_file + list_dir funcionan de punta a punta", async () => {
+  it("write_file + read_file + list_dir work end to end", async () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
-    await callToolHandler({ params: { name: "write_file", arguments: { path: "hello.txt", content: "hola\n" } } });
+    await callToolHandler({ params: { name: "write_file", arguments: { path: "hello.txt", content: "hello\n" } } });
 
     const readResult = await callToolHandler({ params: { name: "read_file", arguments: { path: "hello.txt" } } });
-    expect(textOf(readResult)).toBe("hola\n");
+    expect(textOf(readResult)).toBe("hello\n");
 
     const listResult = await callToolHandler({ params: { name: "list_dir", arguments: {} } });
     const entries = JSON.parse(textOf(listResult)) as Array<{ name: string; type: string }>;
     expect(entries).toContainEqual({ name: "hello.txt", type: "file" });
   });
 
-  it("write_file fuera del workspace responde isError: true en vez de tirar la conexión", async () => {
+  it("write_file outside the workspace responds isError: true instead of dropping the connection", async () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
     const result = await callToolHandler({
@@ -122,13 +112,13 @@ describe("mcp-servers/filesystem-git/server", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/fuera del workspace/);
+    expect(textOf(result)).toMatch(/outside the allowed workspace/);
   });
 
-  it("git_status → git_add → git_commit → git_status queda limpio", async () => {
+  it("git_status → git_add → git_commit → git_status ends up clean", async () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
-    await callToolHandler({ params: { name: "write_file", arguments: { path: "hello.txt", content: "hola\n" } } });
+    await callToolHandler({ params: { name: "write_file", arguments: { path: "hello.txt", content: "hello\n" } } });
 
     const statusBefore = await callToolHandler({ params: { name: "git_status", arguments: {} } });
     expect(textOf(statusBefore)).toMatch(/hello\.txt/);
@@ -137,24 +127,24 @@ describe("mcp-servers/filesystem-git/server", () => {
     const commitResult = await callToolHandler({
       params: { name: "git_commit", arguments: { message: "feat: hello" } },
     });
-    expect(textOf(commitResult)).toMatch(/Commit creado/);
+    expect(textOf(commitResult)).toMatch(/Commit created/);
 
     const statusAfter = await callToolHandler({ params: { name: "git_status", arguments: {} } });
-    expect(textOf(statusAfter)).toBe("(sin cambios pendientes)");
+    expect(textOf(statusAfter)).toBe("(no pending changes)");
   });
 
-  it("git_commit sin nada en staging responde isError: true con el mensaje de git", async () => {
+  it("git_commit with nothing staged responds isError: true with git's message", async () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
     const result = await callToolHandler({
-      params: { name: "git_commit", arguments: { message: "nada que commitear" } },
+      params: { name: "git_commit", arguments: { message: "nothing to commit" } },
     });
 
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/falló/);
+    expect(textOf(result)).toMatch(/failed/);
   });
 
-  it("git_diff refleja cambios hechos después de un commit", async () => {
+  it("git_diff reflects changes made after a commit", async () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
     await callToolHandler({ params: { name: "write_file", arguments: { path: "hello.txt", content: "v1\n" } } });
@@ -167,12 +157,12 @@ describe("mcp-servers/filesystem-git/server", () => {
     expect(textOf(diffResult)).toMatch(/v2/);
   });
 
-  it("una herramienta desconocida responde isError: true en vez de tirar la conexión", async () => {
+  it("an unknown tool responds isError: true instead of dropping the connection", async () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
     const result = await callToolHandler({ params: { name: "no_existe", arguments: {} } });
 
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/Herramienta desconocida/);
+    expect(textOf(result)).toMatch(/Unknown tool/);
   });
 });

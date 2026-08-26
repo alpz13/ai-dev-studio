@@ -1,10 +1,10 @@
 /**
- * Cliente MCP hacia el Feature State MCP (ver src/mcp-servers/feature-state/server.ts),
- * usado por el Director para leer y actualizar en qué stage va cada
- * feature — ver ARCHITECTURE.md sección 4. `connectFeatureStateClient`
- * necesita el SDK real (se mockea en pruebas); las otras tres funciones
- * solo dependen de la forma mínima de un "cliente" con `callTool`, así que
- * se pueden probar con un objeto falso simple, sin mockear módulos.
+ * MCP client for the Feature State MCP (see src/mcp-servers/feature-state/server.ts),
+ * used by the Director to read and update which stage each feature is at
+ * — see ARCHITECTURE.md section 4. `connectFeatureStateClient` needs the
+ * real SDK (mocked in tests); the other three functions only depend on
+ * the minimal shape of a "client" with `callTool`, so they can be tested
+ * with a simple fake object, without mocking any modules.
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -34,7 +34,7 @@ function textOf(result: { content: Array<{ text?: string }> }): string {
 export async function getFeatureState(client: FeatureStateToolsClient, featureId: string): Promise<FeatureState | null> {
   const result = await client.callTool({ name: "get_feature_state", arguments: { featureId } });
   const text = textOf(result);
-  if (result.isError || text.startsWith("No existe estado")) return null;
+  if (result.isError || text.startsWith("No state exists")) return null;
   return JSON.parse(text) as FeatureState;
 }
 
@@ -47,7 +47,7 @@ export async function updateFeatureState(
     arguments: input as unknown as Record<string, unknown>,
   });
   if (result.isError) {
-    throw new Error(`update_feature_state falló: ${textOf(result)}`);
+    throw new Error(`update_feature_state failed: ${textOf(result)}`);
   }
   return JSON.parse(textOf(result)) as FeatureState;
 }
@@ -55,7 +55,7 @@ export async function updateFeatureState(
 export async function listPendingFeatures(client: FeatureStateToolsClient): Promise<FeatureState[]> {
   const result = await client.callTool({ name: "list_pending_features", arguments: {} });
   if (result.isError) {
-    throw new Error(`list_pending_features falló: ${textOf(result)}`);
+    throw new Error(`list_pending_features failed: ${textOf(result)}`);
   }
   return JSON.parse(textOf(result)) as FeatureState[];
 }

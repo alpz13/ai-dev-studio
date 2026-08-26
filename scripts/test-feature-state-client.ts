@@ -1,7 +1,7 @@
 /**
- * End-to-end test of the Feature State MCP: launches the server as a
- * subprocess (stdio), connects as an MCP client, and exercises all three
- * tools. Requires `npm install` first.
+ * End-to-end test for the Feature State MCP: spawns the server as a
+ * subprocess (stdio), connects as an MCP client, and exercises the
+ * three tools. Requires `npm install` first.
  *
  * Usage: npm run test:mcp-client
  */

@@ -7,9 +7,7 @@ vi.mock("dotenv/config", () => ({}));
 
 const createMock = vi.fn();
 vi.mock("@anthropic-ai/sdk", () => ({
-  default: vi.fn().mockImplementation(function () {
-    return { messages: { create: createMock } };
-  }),
+  default: vi.fn().mockImplementation(function () { return { messages: { create: createMock } }; }),
 }));
 
 vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
@@ -24,9 +22,7 @@ vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
 }));
 
 vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
-  StdioClientTransport: vi.fn().mockImplementation(function (opts: unknown) {
-    return { __opts: opts };
-  }),
+  StdioClientTransport: vi.fn().mockImplementation(function (opts) { return { __opts: opts }; }),
 }));
 
 const { runPmAgent } = await import("../../../agents/pm/agent.js");
@@ -41,7 +37,7 @@ describe("agents/pm/agent: runPmAgent", () => {
     process.env.LOGS_DIR = logsDir;
     process.env.ANTHROPIC_API_KEY = "test-key";
     createMock.mockReset();
-    createMock.mockResolvedValue({ content: [{ type: "text", text: "specs listas" }], stop_reason: "end_turn" });
+    createMock.mockResolvedValue({ content: [{ type: "text", text: "specs ready" }], stop_reason: "end_turn" });
   });
 
   afterEach(async () => {
@@ -49,19 +45,19 @@ describe("agents/pm/agent: runPmAgent", () => {
     delete process.env.LOGS_DIR;
   });
 
-  it("loguea sus eventos con agentRole 'PM'", async () => {
-    await runPmAgent({ featureId, task: "quiero exportar a CSV", workspaceRoot: `workspaces/${featureId}` });
+  it("logs its events with agentRole 'PM'", async () => {
+    await runPmAgent({ featureId, task: "I want to export to CSV", workspaceRoot: `workspaces/${featureId}` });
 
     const logger = new TraceLogger(logsDir);
     const events = await logger.readTrace(featureId);
     expect(events.every((e) => e.agentRole === "PM")).toBe(true);
   });
 
-  it("el system prompt le pide escribir specs.md con criterios de aceptación", async () => {
-    await runPmAgent({ featureId, task: "algo", workspaceRoot: `workspaces/${featureId}` });
+  it("the system prompt asks it to write specs.md with acceptance criteria", async () => {
+    await runPmAgent({ featureId, task: "something", workspaceRoot: `workspaces/${featureId}` });
 
     const system = createMock.mock.calls[0][0].system as string;
     expect(system).toMatch(/specs\.md/);
-    expect(system).toMatch(/criterios de aceptación/i);
+    expect(system).toMatch(/acceptance criteria/i);
   });
 });

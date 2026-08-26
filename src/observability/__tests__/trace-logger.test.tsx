@@ -17,7 +17,7 @@ describe("observability/trace-logger: TraceLogger", () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  it("log agrega un timestamp y persiste el evento en logs/<traceId>.jsonl", async () => {
+  it("log adds a timestamp and persists the event to logs/<traceId>.jsonl", async () => {
     const event = await logger.log({
       traceId: "feat_demo",
       spanId: "agt_1",
@@ -33,7 +33,7 @@ describe("observability/trace-logger: TraceLogger", () => {
     expect(raw.trim().split("\n")).toHaveLength(1);
   });
 
-  it("readTrace devuelve los eventos en el orden en que se escribieron", async () => {
+  it("readTrace returns the events in the order they were written", async () => {
     await logger.log({ traceId: "feat_demo", spanId: "s1", agentRole: "Dev", event: "agent_start" });
     await logger.log({ traceId: "feat_demo", spanId: "s1", agentRole: "Dev", event: "tool_call", tool: "write_file" });
     await logger.log({ traceId: "feat_demo", spanId: "s1", agentRole: "Dev", event: "agent_end" });
@@ -44,11 +44,11 @@ describe("observability/trace-logger: TraceLogger", () => {
     expect(events[1].tool).toBe("write_file");
   });
 
-  it("readTrace de un traceId sin logs devuelve []", async () => {
+  it("readTrace of a traceId with no logs returns []", async () => {
     await expect(logger.readTrace("feat_no_existe")).resolves.toEqual([]);
   });
 
-  it("traceId distintos van a archivos distintos", async () => {
+  it("different traceIds go to different files", async () => {
     await logger.log({ traceId: "feat_a", spanId: "s1", agentRole: "Dev", event: "agent_start" });
     await logger.log({ traceId: "feat_b", spanId: "s1", agentRole: "Dev", event: "agent_start" });
 
@@ -56,7 +56,7 @@ describe("observability/trace-logger: TraceLogger", () => {
     await expect(logger.readTrace("feat_b")).resolves.toHaveLength(1);
   });
 
-  it("newSpanId genera ids únicos con el prefijo dado", () => {
+  it("newSpanId generates unique ids with the given prefix", () => {
     const a = newSpanId("agt_dev");
     const b = newSpanId("agt_dev");
 
@@ -66,11 +66,11 @@ describe("observability/trace-logger: TraceLogger", () => {
 });
 
 describe("observability/trace-logger: resolveLogsDir", () => {
-  it("resuelve una ruta relativa contra cwd", () => {
+  it("resolves a relative path against cwd", () => {
     expect(resolveLogsDir("logs")).toBe(path.resolve(process.cwd(), "logs"));
   });
 
-  it("respeta una ruta absoluta tal cual", () => {
+  it("keeps an absolute path as-is", () => {
     const abs = path.resolve(os.tmpdir(), "algun-dir-logs");
     expect(resolveLogsDir(abs)).toBe(abs);
   });

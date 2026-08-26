@@ -3,14 +3,14 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// server.ts corre `main()` apenas se importa (no tiene guard de "solo si es
-// el entrypoint"), así que para probar el ruteo de sus herramientas sin
-// levantar un proceso stdio real, mockeamos el SDK de MCP y capturamos los
-// handlers que el server registra con setRequestHandler. La lógica de
-// negocio detrás (FeatureStateStore) NO se mockea: corre de verdad contra
-// un FEATURES_DIR temporal, así que esto es más una prueba de integración
-// del wiring que una unitaria pura — a propósito, es la parte más fácil de
-// romper por accidente.
+// server.ts runs `main()` as soon as it's imported (it has no "only if this
+// is the entrypoint" guard), so to test its tool routing without spinning up
+// a real stdio process, we mock the MCP SDK and capture the handlers the
+// server registers with setRequestHandler. The business logic behind it
+// (FeatureStateStore) is NOT mocked: it runs for real against a temporary
+// FEATURES_DIR, so this is more of an integration test of the wiring than a
+// pure unit test — deliberately, since that's the part easiest to break by
+// accident.
 const LIST_TOOLS_SCHEMA = Symbol("ListToolsRequestSchema");
 const CALL_TOOL_SCHEMA = Symbol("CallToolRequestSchema");
 
@@ -37,9 +37,7 @@ vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
 }));
 
 vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
-  StdioServerTransport: vi.fn().mockImplementation(function () {
-    return {};
-  }),
+  StdioServerTransport: vi.fn().mockImplementation(function () { return {}; }),
 }));
 
 async function loadServerModule(featuresDir: string) {
@@ -47,9 +45,9 @@ async function loadServerModule(featuresDir: string) {
   process.env.FEATURES_DIR = featuresDir;
   vi.resetModules();
   await import("../../../mcp-servers/feature-state/server.js");
-  // main() sigue corriendo en segundo plano tras el import (ensureDir +
-  // connect, ambos inofensivos/mockeados aquí); un tick alcanza para que
-  // termine antes de que el test siga.
+  // main() keeps running in the background after the import (ensureDir +
+  // connect, both harmless/mocked here); one tick is enough for it to
+  // finish before the test continues.
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
@@ -71,7 +69,7 @@ describe("mcp-servers/feature-state/server", () => {
     delete process.env.FEATURES_DIR;
   });
 
-  it("registra list_tools y expone las tres herramientas esperadas", async () => {
+  it("registers list_tools and exposes the three expected tools", async () => {
     const listToolsHandler = handlers.get(LIST_TOOLS_SCHEMA);
     expect(listToolsHandler).toBeDefined();
 
@@ -86,7 +84,7 @@ describe("mcp-servers/feature-state/server", () => {
     ]);
   });
 
-  it("get_feature_state sobre una feature inexistente responde con un mensaje, no un error", async () => {
+  it("get_feature_state on a nonexistent feature responds with a message, not an error", async () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
     const result = await callToolHandler({
@@ -94,10 +92,10 @@ describe("mcp-servers/feature-state/server", () => {
     });
 
     expect(result.isError).toBeUndefined();
-    expect(textOf(result)).toMatch(/No existe estado/);
+    expect(textOf(result)).toMatch(/No state exists/);
   });
 
-  it("update_feature_state crea la feature y luego get_feature_state la devuelve", async () => {
+  it("update_feature_state creates the feature and get_feature_state then returns it", async () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
     const updateResult = await callToolHandler({
@@ -114,7 +112,7 @@ describe("mcp-servers/feature-state/server", () => {
     expect(textOf(getResult)).toMatch(/"status": "in_progress"/);
   });
 
-  it("update_feature_state hace merge superficial de stages en llamadas sucesivas", async () => {
+  it("update_feature_state shallow-merges stages across successive calls", async () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
     await callToolHandler({
@@ -135,7 +133,7 @@ describe("mcp-servers/feature-state/server", () => {
     expect(parsed.stages.Dev.status).toBe("in_progress");
   });
 
-  it("list_pending_features excluye las features con status done", async () => {
+  it("list_pending_features excludes features with status done", async () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
     await callToolHandler({
@@ -151,12 +149,12 @@ describe("mcp-servers/feature-state/server", () => {
     expect(pending.map((f) => f.featureId)).toEqual(["feat_activa"]);
   });
 
-  it("una herramienta desconocida responde isError: true en vez de tirar la conexión", async () => {
+  it("an unknown tool responds isError: true instead of dropping the connection", async () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
     const result = await callToolHandler({ params: { name: "no_existe", arguments: {} } });
 
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/Herramienta desconocida/);
+    expect(textOf(result)).toMatch(/Unknown tool/);
   });
 });

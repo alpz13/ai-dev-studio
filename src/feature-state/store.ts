@@ -1,9 +1,9 @@
 /**
- * Pure persistence logic for feature state.
+ * Pure persistence logic for a feature's state.
  *
- * Deliberately has NO dependency on MCP or any network layer: this allows
- * isolated testing (see scripts/test-feature-state-store.ts) and reuse
- * from any transport (MCP today, something else tomorrow).
+ * Deliberately does NOT depend on MCP or anything network-related: this way
+ * it can be tested in isolation (see scripts/test-feature-state-store.ts) and
+ * can be reused from any transport (MCP today, something else tomorrow).
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -68,7 +68,7 @@ export class FeatureStateStore {
     return toWrite;
   }
 
-  /** Creates the feature if it does not exist, or shallow-merges the given fields if it already does. */
+  /** Creates the feature if it doesn't exist, or shallow-merges the given fields if it does. */
   async upsertState(input: UpdateFeatureStateInput): Promise<FeatureState> {
     const existing = await this.readState(input.featureId);
 

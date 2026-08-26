@@ -7,9 +7,7 @@ vi.mock("dotenv/config", () => ({}));
 
 const createMock = vi.fn();
 vi.mock("@anthropic-ai/sdk", () => ({
-  default: vi.fn().mockImplementation(function () {
-    return { messages: { create: createMock } };
-  }),
+  default: vi.fn().mockImplementation(function () { return { messages: { create: createMock } }; }),
 }));
 
 vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
@@ -24,9 +22,7 @@ vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
 }));
 
 vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
-  StdioClientTransport: vi.fn().mockImplementation(function (opts: unknown) {
-    return { __opts: opts };
-  }),
+  StdioClientTransport: vi.fn().mockImplementation(function (opts) { return { __opts: opts }; }),
 }));
 
 const { runArchitectAgent } = await import("../../../agents/architect/agent.js");
@@ -41,7 +37,7 @@ describe("agents/architect/agent: runArchitectAgent", () => {
     process.env.LOGS_DIR = logsDir;
     process.env.ANTHROPIC_API_KEY = "test-key";
     createMock.mockReset();
-    createMock.mockResolvedValue({ content: [{ type: "text", text: "design listo" }], stop_reason: "end_turn" });
+    createMock.mockResolvedValue({ content: [{ type: "text", text: "design ready" }], stop_reason: "end_turn" });
   });
 
   afterEach(async () => {
@@ -49,20 +45,20 @@ describe("agents/architect/agent: runArchitectAgent", () => {
     delete process.env.LOGS_DIR;
   });
 
-  it("loguea sus eventos con agentRole 'Arquitecto'", async () => {
-    await runArchitectAgent({ featureId, task: "diseña esto", workspaceRoot: `workspaces/${featureId}` });
+  it("logs its events with agentRole 'Architect'", async () => {
+    await runArchitectAgent({ featureId, task: "design this", workspaceRoot: `workspaces/${featureId}` });
 
     const logger = new TraceLogger(logsDir);
     const events = await logger.readTrace(featureId);
-    expect(events.every((e) => e.agentRole === "Arquitecto")).toBe(true);
+    expect(events.every((e) => e.agentRole === "Architect")).toBe(true);
   });
 
-  it("el system prompt le pide leer specs.md y escribir design.md, sin implementar código", async () => {
-    await runArchitectAgent({ featureId, task: "algo", workspaceRoot: `workspaces/${featureId}` });
+  it("the system prompt asks it to read specs.md and write design.md, without implementing code", async () => {
+    await runArchitectAgent({ featureId, task: "something", workspaceRoot: `workspaces/${featureId}` });
 
     const system = createMock.mock.calls[0][0].system as string;
     expect(system).toMatch(/specs\.md/);
     expect(system).toMatch(/design\.md/);
-    expect(system).toMatch(/no escribas código/i);
+    expect(system).toMatch(/do not write implementation code/i);
   });
 });

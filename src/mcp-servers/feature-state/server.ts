@@ -2,14 +2,14 @@
 /**
  * Feature State MCP Server.
  *
- * Expone el estado de cada feature (en qué stage va, qué se hizo, qué falta)
- * como herramientas MCP, para que cualquier agente (el Director, u otro)
- * pueda leerlo/actualizarlo como cliente MCP en lugar de tocar archivos
- * directamente. Ver ARCHITECTURE.md sección 4.
+ * Exposes each feature's state (what stage it's at, what's done, what's
+ * left) as MCP tools, so any agent (the Director, or another) can
+ * read/update it as an MCP client instead of touching files directly.
+ * See ARCHITECTURE.md section 4.
  *
- * Uso: tsx src/mcp-servers/feature-state/server.ts
- * (normalmente no se corre a mano: un cliente MCP lo lanza como subproceso
- * por stdio, ver scripts/test-feature-state-client.ts)
+ * Usage: tsx src/mcp-servers/feature-state/server.ts
+ * (normally not run by hand: an MCP client launches it as a subprocess
+ * over stdio, see scripts/test-feature-state-client.ts)
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -27,11 +27,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "get_feature_state",
-      description: "Obtiene el estado actual de una feature por su featureId. Devuelve null si no existe.",
+      description: "Gets the current state of a feature by its featureId. Returns null if it doesn't exist.",
       inputSchema: {
         type: "object",
         properties: {
-          featureId: { type: "string", description: "Id único de la feature, ej. feat_2026-08-22_export-csv" },
+          featureId: { type: "string", description: "Unique feature id, e.g. feat_2026-08-22_export-csv" },
         },
         required: ["featureId"],
       },
@@ -39,18 +39,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "update_feature_state",
       description:
-        "Crea la feature si no existe, o actualiza (merge superficial) su título, status, currentStage y/o stages. Úsalo cada vez que un agente termina o falla su parte, para poder retomar después.",
+        "Creates the feature if it doesn't exist, or updates (shallow merge) its title, status, currentStage and/or stages. Use it whenever an agent finishes or fails its part, so it can be resumed later.",
       inputSchema: {
         type: "object",
         properties: {
           featureId: { type: "string" },
           title: { type: "string" },
           status: { type: "string", enum: ["pending", "in_progress", "blocked", "done"] },
-          currentStage: { type: "string", enum: ["PM", "Arquitecto", "Dev", "QA", "DevOps"] },
+          currentStage: { type: "string", enum: ["PM", "Architect", "Dev", "QA", "DevOps"] },
           stages: {
             type: "object",
             description:
-              "Mapa parcial por stage, ej. { \"QA\": { \"status\": \"failed\", \"notes\": \"2 tests failing\" } }",
+              "Partial map by stage, e.g. { \"QA\": { \"status\": \"failed\", \"notes\": \"2 tests failing\" } }",
           },
         },
         required: ["featureId"],
@@ -58,7 +58,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "list_pending_features",
-      description: "Lista las features cuyo status no es 'done' — útil para saber qué se puede retomar.",
+      description: "Lists the features whose status is not 'done' — useful for knowing what can be resumed.",
       inputSchema: { type: "object", properties: {} },
     },
   ],
@@ -77,15 +77,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: rawArgs } = request.params;
   const args = (rawArgs ?? {}) as Record<string, unknown>;
 
-  // Todo envuelto en try/catch (igual que filesystem-git/server.ts): que una
-  // tool desconocida o un error interno responda isError:true en vez de
-  // tirar la conexión MCP entera.
+  // Everything wrapped in try/catch (same as filesystem-git/server.ts): so
+  // an unknown tool or an internal error responds with isError:true instead
+  // of dropping the whole MCP connection.
   try {
     switch (name) {
       case "get_feature_state": {
         const featureId = String(args.featureId);
         const state = await store.readState(featureId);
-        return ok(state ? JSON.stringify(state, null, 2) : `No existe estado para "${featureId}".`);
+        return ok(state ? JSON.stringify(state, null, 2) : `No state exists for "${featureId}".`);
       }
 
       case "update_feature_state": {
@@ -105,7 +105,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       default:
-        throw new Error(`Herramienta desconocida: ${name}`);
+        throw new Error(`Unknown tool: ${name}`);
     }
   } catch (err) {
     return fail(err);
@@ -116,10 +116,10 @@ async function main() {
   await store.ensureDir();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("[feature-state-mcp] listo, escuchando por stdio");
+  console.error("[feature-state-mcp] ready, listening on stdio");
 }
 
 main().catch((err) => {
-  console.error("[feature-state-mcp] error fatal:", err);
+  console.error("[feature-state-mcp] fatal error:", err);
   process.exit(1);
 });

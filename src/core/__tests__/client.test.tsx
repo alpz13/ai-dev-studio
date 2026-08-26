@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// dotenv/config es un import de efecto secundario (lee .env del disco);
-// lo noopeamos para que el test no dependa de que exista un .env real.
+// dotenv/config is a side-effect import (reads .env from disk);
+// we no-op it so the test doesn't depend on a real .env existing.
 vi.mock("dotenv/config", () => ({}));
 
 const createMock = vi.fn();
@@ -28,73 +28,73 @@ describe("core/client", () => {
   });
 
   describe("sendMessage", () => {
-    it("envía el prompt como mensaje de usuario y devuelve el bloque de texto de la respuesta", async () => {
-      createMock.mockResolvedValue({ content: [{ type: "text", text: "hola" }] });
+    it("sends the prompt as a user message and returns the response's text block", async () => {
+      createMock.mockResolvedValue({ content: [{ type: "text", text: "hi" }] });
 
-      const result = await sendMessage("di hola");
+      const result = await sendMessage("say hi");
 
-      expect(result).toBe("hola");
+      expect(result).toBe("hi");
       expect(createMock).toHaveBeenCalledTimes(1);
       const callArgs = createMock.mock.calls[0][0];
-      expect(callArgs.messages).toEqual([{ role: "user", content: "di hola" }]);
+      expect(callArgs.messages).toEqual([{ role: "user", content: "say hi" }]);
     });
 
-    it("devuelve string vacío si la respuesta no trae ningún bloque de texto", async () => {
+    it("returns an empty string if the response has no text block", async () => {
       createMock.mockResolvedValue({ content: [{ type: "tool_use", id: "x", name: "y", input: {} }] });
 
-      const result = await sendMessage("algo");
+      const result = await sendMessage("something");
 
       expect(result).toBe("");
     });
 
-    it("pasa model, system y maxTokens al SDK cuando se dan como opciones", async () => {
+    it("passes model, system, and maxTokens to the SDK when given as options", async () => {
       createMock.mockResolvedValue({ content: [{ type: "text", text: "ok" }] });
 
-      await sendMessage("hola", { model: "modelo-custom", system: "eres un test", maxTokens: 42 });
+      await sendMessage("hi", { model: "custom-model", system: "you are a test", maxTokens: 42 });
 
       const callArgs = createMock.mock.calls[0][0];
-      expect(callArgs.model).toBe("modelo-custom");
-      expect(callArgs.system).toBe("eres un test");
+      expect(callArgs.model).toBe("custom-model");
+      expect(callArgs.system).toBe("you are a test");
       expect(callArgs.max_tokens).toBe(42);
     });
 
-    it("usa 1024 como max_tokens por default", async () => {
+    it("uses 1024 as the default max_tokens", async () => {
       createMock.mockResolvedValue({ content: [{ type: "text", text: "ok" }] });
 
-      await sendMessage("hola");
+      await sendMessage("hi");
 
       expect(createMock.mock.calls[0][0].max_tokens).toBe(1024);
     });
   });
 
   describe("streamMessage", () => {
-    it("llama onDelta por cada chunk emitido y devuelve el texto final", async () => {
+    it("calls onDelta for each emitted chunk and returns the final text", async () => {
       const handlers: Record<string, (chunk: string) => void> = {};
       streamMock.mockReturnValue({
         on: (event: string, handler: (chunk: string) => void) => {
           handlers[event] = handler;
         },
         finalMessage: async () => {
-          handlers.text?.("hola ");
-          handlers.text?.("mundo");
-          return { content: [{ type: "text", text: "hola mundo" }] };
+          handlers.text?.("hi ");
+          handlers.text?.("world");
+          return { content: [{ type: "text", text: "hi world" }] };
         },
       });
 
       const chunks: string[] = [];
-      const result = await streamMessage("saluda", (chunk) => chunks.push(chunk));
+      const result = await streamMessage("greet", (chunk) => chunks.push(chunk));
 
-      expect(chunks).toEqual(["hola ", "mundo"]);
-      expect(result).toBe("hola mundo");
+      expect(chunks).toEqual(["hi ", "world"]);
+      expect(result).toBe("hi world");
     });
 
-    it("devuelve string vacío si el mensaje final no trae bloque de texto", async () => {
+    it("returns an empty string if the final message has no text block", async () => {
       streamMock.mockReturnValue({
         on: () => {},
         finalMessage: async () => ({ content: [] }),
       });
 
-      const result = await streamMessage("algo", () => {});
+      const result = await streamMessage("something", () => {});
 
       expect(result).toBe("");
     });

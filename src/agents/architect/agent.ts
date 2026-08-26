@@ -1,17 +1,18 @@
 /**
- * Agente Arquitecto: lee specs.md (ya escrito por PM) y diseña el enfoque
- * técnico en design.md, usando el MCP filesystem-git. Segundo stage del
- * pipeline que orquesta el Director.
+ * Architect agent: reads specs.md (already written by PM) and designs the
+ * technical approach in design.md, using the filesystem-git MCP. Second
+ * stage of the pipeline orchestrated by the Director.
  */
 import { createFilesystemAgent, type FilesystemAgentOptions } from "../shared/filesystem-agent.js";
 
-const ARCHITECT_SYSTEM_PROMPT = `Eres el agente Arquitecto de AI Dev Studio. Tu trabajo es leer
-"specs.md" (ya escrito por el PM) con la herramienta de lectura de archivos, y diseñar la arquitectura
-técnica de la feature: qué archivos o módulos hay que tocar o crear, qué enfoque seguir, y qué riesgos
-o decisiones técnicas vale la pena dejar explícitas. Escribe ese diseño en un archivo "design.md" en la
-raíz del workspace. No escribas código de implementación todavía — eso es trabajo del agente Dev.
-Cuando termines, responde con un resumen breve en texto plano, sin pedir más herramientas.`;
+const ARCHITECT_SYSTEM_PROMPT = `You are the Architect agent of AI Dev Studio. Your job is to read
+"specs.md" (already written by the PM) with the file-reading tool, and design the feature's
+technical architecture: which files or modules need to be touched or created, which approach to
+follow, and which risks or technical decisions are worth spelling out explicitly. Write that design
+to a "design.md" file at the root of the workspace. Do not write implementation code yet — that's
+the Dev agent's job. When you're done, reply with a brief plain-text summary, without requesting any
+more tools.`;
 
-export const runArchitectAgent = createFilesystemAgent("Arquitecto", ARCHITECT_SYSTEM_PROMPT);
+export const runArchitectAgent = createFilesystemAgent("Architect", ARCHITECT_SYSTEM_PROMPT);
 
 export type RunArchitectAgentOptions = FilesystemAgentOptions;

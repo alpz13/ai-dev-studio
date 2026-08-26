@@ -1,7 +1,7 @@
 /**
- * Operaciones de archivos, acotadas a un "workspace root". Toda ruta que
- * intente salirse de esa raíz (../.. o una ruta absoluta) se rechaza — el
- * agente Dev nunca debería poder tocar nada fuera de su propio workspace.
+ * File operations, scoped to a "workspace root". Any path that tries to
+ * escape that root (../.. or an absolute path) is rejected — the Dev
+ * agent should never be able to touch anything outside its own workspace.
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -11,7 +11,7 @@ export function resolveSafePath(root: string, relPath: string): string {
   const resolved = path.resolve(resolvedRoot, relPath);
   const rel = path.relative(resolvedRoot, resolved);
   if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    throw new Error(`Ruta fuera del workspace permitido: "${relPath}"`);
+    throw new Error(`Path outside the allowed workspace: "${relPath}"`);
   }
   return resolved;
 }

@@ -1,21 +1,21 @@
 # How to use the Agent Loop
 
-Ahora mismo (Fase 2) se usa por línea de comandos, un feature a la vez — todavía no hay chat ni nada con lo que "hablarle" directamente. El flujo real, una vez que hagas npm install y pongas tu API key, es este:
+Right now (Phase 2) it's used from the command line, one feature at a time — there's no chat yet, nothing you can "talk" to directly. The actual flow, once you've done npm install and set your API key, is this:
 
 ```bash
 npm run agent:dev -- feat_export-csv "Crea un endpoint que exporte los reportes a CSV"
 ```
 
-Ahí el agente Dev arranca, lanza el MCP filesystem-git apuntando a workspaces/feat_export-csv/ (una carpeta nueva y aislada, con su propio repo de git — no toca ningún proyecto real tuyo todavía), y empieza a llamar herramientas (leer, escribir, listar, git status/commit) hasta que termina la tarea y hace commit. Al terminar tienes tres cosas para revisar: el código en workspaces/feat_export-csv/ con su historial de git, la traza completa en logs/feat_export-csv.jsonl (quién hizo qué, paso a paso), y el resumen que el agente imprime en consola.
+There, the Dev agent starts up, launches the filesystem-git MCP pointed at workspaces/feat_export-csv/ (a new, isolated folder with its own git repo — it doesn't touch any of your real projects yet), and starts calling tools (read, write, list, git status/commit) until it finishes the task and commits. When it's done you have three things to check: the code in workspaces/feat_export-csv/ with its git history, the full trace in logs/feat_export-csv.jsonl (who did what, step by step), and the summary the agent prints to the console.
 
-Eso es "usarlo" hoy: una tarea, un agente, una corrida de terminal. Todavía no es el producto final — es la pieza mínima para probar que el loop agente↔MCP↔Claude funciona de verdad.
+That's "using it" today: one task, one agent, one terminal run. It's still not the final product — it's the minimal piece to prove that the agent↔MCP↔Claude loop actually works.
 
-## Roadmap y experiencia final
+## Roadmap and final experience
 
-La forma de uso que vale la pena tener en mente, según el roadmap:
+The way of using it worth keeping in mind, per the roadmap:
 
-- Fase 3 (Director + pipeline): en vez de invocar al Dev directo, le hablas al Director con un solo comando — algo como npm run studio -- "quiero exportar reportes a CSV" — y él solo va corriendo PM → Arquitecto → Dev → QA → DevOps, consultando el Feature State MCP para saber en qué va cada uno. Ahí ya no eliges tú qué agente correr.
-- Fase 5 (chat con streaming): esa misma interacción, pero por un chat web o un bot de Telegram/Slack — escribes el pedido en lenguaje natural y ves en tiempo real "PM: ✅ specs listas", "Dev: escribiendo código...", etc. Esa es la experiencia final pensada para el proyecto: tú nunca corres agentes a mano, solo conversas con el Director.
-- Para retomar algo a medias (lo que pediste desde el principio), sería npm run studio -- --resume feat_export-csv: el Director lee el state.json de esa feature y sigue donde se quedó, sin repetir PM/Arquitecto si ya estaban listos.
+- Phase 3 (Director + pipeline): instead of invoking Dev directly, you talk to the Director with a single command — something like npm run studio -- "quiero exportar reportes a CSV" — and it goes and runs PM → Architect → Dev → QA → DevOps on its own, checking the Feature State MCP to know where each one stands. At that point you no longer choose which agent to run.
+- Phase 5 (chat with streaming): that same interaction, but through a web chat or a Telegram/Slack bot — you write the request in natural language and watch "PM: ✅ specs ready", "Dev: writing code...", etc. in real time. That's the final experience envisioned for the project: you never run agents by hand, you just talk to the Director.
+- To resume something left half-done (what you asked for from the start), it would be npm run studio -- --resume feat_export-csv: the Director reads that feature's state.json and continues where it left off, without repeating PM/Architect if they were already done.
 
-Y una aclaración importante sobre el alcance real: por ahora esto está pensado como entorno de práctica aislado (cada feature en su propia carpeta desechable bajo workspaces/), no para que apunte a tus repos de verdad. El día que quieras usarlo sobre un proyecto real, cambiarías WORKSPACE_ROOT para que apunte a ese repo — pero yo esperaría a tener el pipeline completo y probado antes de darle esa confianza.
+And an important clarification about the actual scope: for now this is meant as an isolated practice environment (each feature in its own disposable folder under workspaces/), not to be pointed at your real repos. The day you want to use it on a real project, you'd change WORKSPACE_ROOT to point at that repo — but I'd wait until the full pipeline is built and tested before giving it that kind of trust.

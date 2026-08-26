@@ -1,13 +1,13 @@
 /**
  * Minimal wrapper over the Anthropic TypeScript SDK (Messages API).
- * Phase 0 of the roadmap: no agents or MCP yet, just testing the SDK.
+ * Roadmap phase 0: no agents or MCP yet, just testing the SDK.
  */
 import "dotenv/config";
 import Anthropic from "@anthropic-ai/sdk";
 
-// Model is read from env to avoid hardcoding a model ID that may become
-// outdated; check the current ID at
-// https://docs.claude.com/en/docs/about-claude/models before running.
+// The model is read from env so we don't hardcode a model id that could
+// become outdated; check the current id at
+// https://docs.claude.com/en/docs/about-claude/models before running it.
 const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929";
 
 let _client: Anthropic | null = null;
