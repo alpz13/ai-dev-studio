@@ -60,6 +60,9 @@
   }
 
   function applyEventToStages(event) {
+    // Only top-level stage spans move the badges — a subagent (Dev
+    // delegating a piece of work, Phase 4) has parentSpanId set and shares
+    // the same agentRole, so it must not double-drive the Dev badge.
     if (event.parentSpanId) return;
 
     if (STAGES.indexOf(event.agentRole) !== -1) {
@@ -70,6 +73,9 @@
       return;
     }
 
+    // The Director's own "message" events carry the QA-retry signal: QA's
+    // agent_end already marked it "done" above, but if the verdict wasn't
+    // actually approved the Director logs this instead of moving on.
     if (event.agentRole === "Director" && event.event === "message" && event.stage === "QA" && /retry/i.test(String(event.note))) {
       stageStatus.QA = "failed";
       stageStatus.Dev = "in_progress";
@@ -114,7 +120,10 @@
     fetch("/api/features/" + encodeURIComponent(featureId) + "/summary")
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (summary) { if (summary) renderSummary(summary); })
-      .catch(function () {});
+      .catch(function () {
+        // Best-effort: the live log already told the story, the summary
+        // panel is a nice-to-have recap.
+      });
   }
 
   function connect(featureId) {
@@ -134,11 +143,16 @@
       appendLog(event);
       applyEventToStages(event);
 
+      // Once the Director's own span ends (pipeline complete, blocked, or
+      // errored), the trace is final for this run — fetch and show the
+      // summary (stage durations, tokens, QA retries) computed from it.
       if (!event.parentSpanId && event.agentRole === "Director" && (event.event === "agent_end" || event.event === "error")) {
         loadSummary(featureId);
       }
     };
-    currentSource.onerror = function () {};
+    currentSource.onerror = function () {
+      // EventSource retries on its own; nothing to do here for this demo.
+    };
   }
 
   function loadPendingFeatures() {
@@ -169,7 +183,7 @@
         pendingListEl.appendChild(ul);
       })
       .catch(function () {
-        pendingListEl.innerHTML = '<p class="empty">Couldn\'t load pending features.</p>';
+        pendingListEl.innerHTML = '<p class="empty">Couldn't load pending features.</p>';
       });
   }
 
