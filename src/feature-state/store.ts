@@ -24,6 +24,14 @@ export interface FeatureState {
   status: FeatureStatus;
   currentStage: StageName;
   stages: Partial<Record<StageName, StageInfo>>;
+  /**
+   * Phase 6 — robust resume: how many times QA has already sent this
+   * feature back to Dev. Persisted (not just kept as a local variable in
+   * runDirector) so that resuming a feature that was interrupted mid
+   * QA-retry-cycle sends Dev the "QA found issues" task again instead of
+   * silently reverting to the original "implement the feature" task.
+   */
+  qaRetries?: number;
   updatedAt: string;
 }
 
@@ -33,6 +41,7 @@ export interface UpdateFeatureStateInput {
   status?: FeatureStatus;
   currentStage?: StageName;
   stages?: Partial<Record<StageName, StageInfo>>;
+  qaRetries?: number;
 }
 
 export function resolveFeaturesDir(baseDir = process.env.FEATURES_DIR ?? "features"): string {
@@ -78,6 +87,7 @@ export class FeatureStateStore {
       status: "pending",
       currentStage: "PM",
       stages: {},
+      qaRetries: 0,
       updatedAt: new Date().toISOString(),
     };
 
@@ -87,6 +97,7 @@ export class FeatureStateStore {
       status: input.status ?? base.status,
       currentStage: input.currentStage ?? base.currentStage,
       stages: { ...base.stages, ...input.stages },
+      qaRetries: input.qaRetries ?? base.qaRetries ?? 0,
     };
 
     return this.writeState(merged);

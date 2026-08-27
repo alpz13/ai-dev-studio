@@ -39,15 +39,15 @@ async function loadServerModule(workspaceRoot: string) {
   handlers = new Map();
   process.env.WORKSPACE_ROOT = workspaceRoot;
   vi.resetModules();
+  // gitInitIfNeeded spawns real child processes — we need to wait until
+  // main() finishes, not just one tick. connectMock is the last thing main()
+  // awaits, so resolving when it's called guarantees ensureRoot +
+  // gitInitIfNeeded are both done before any test assertion runs.
+  const ready = new Promise<void>((resolve) => {
+    connectMock.mockImplementationOnce(async () => { resolve(); });
+  });
   await import("../../../mcp-servers/filesystem-git/server.js");
-  // main() runs in the background: ensureRoot + gitInitIfNeeded (spawns a
-  // git subprocess) + mocked connect. Poll until connect is called so that
-  // git init has fully completed before the test continues — one tick is not
-  // enough on Windows where spawning a child process takes longer.
-  const deadline = Date.now() + 10_000;
-  while (connectMock.mock.calls.length === 0 && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 20));
-  }
+  await ready;
 }
 
 function textOf(result: ToolResult): string {
@@ -108,7 +108,7 @@ describe("mcp-servers/filesystem-git/server", () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
     const result = await callToolHandler({
-      params: { name: "write_file", arguments: { path: "../fuera.txt", content: "x" } },
+      params: { name: "write_file", arguments: { path: "../outside.txt", content: "x" } },
     });
 
     expect(result.isError).toBe(true);

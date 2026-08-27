@@ -12,7 +12,7 @@ import type { FeatureState, UpdateFeatureStateInput } from "../../feature-state/
 
 export interface FeatureStateToolsClient {
   callTool: (input: { name: string; arguments: Record<string, unknown> }) => Promise<{
-    content: Array<{ text?: string }>;
+    content: unknown[];
     isError?: boolean;
   }>;
 }
@@ -27,8 +27,8 @@ export async function connectFeatureStateClient(clientName = "feature-state-clie
   return client;
 }
 
-function textOf(result: { content: Array<{ text?: string }> }): string {
-  return result.content.map((c) => c.text ?? "").join("");
+function textOf(result: { content: unknown[] }): string {
+  return result.content.map((c) => (c as { text?: string }).text ?? "").join("");
 }
 
 export async function getFeatureState(client: FeatureStateToolsClient, featureId: string): Promise<FeatureState | null> {

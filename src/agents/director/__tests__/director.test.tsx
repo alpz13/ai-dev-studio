@@ -42,6 +42,7 @@ const updateFeatureStateMock = vi.fn(async (_client: unknown, input: UpdateFeatu
     status: "pending",
     currentStage: "PM",
     stages: {},
+    qaRetries: 0,
     updatedAt: new Date().toISOString(),
   };
   const merged: FeatureState = {
@@ -50,6 +51,7 @@ const updateFeatureStateMock = vi.fn(async (_client: unknown, input: UpdateFeatu
     status: input.status ?? base.status,
     currentStage: input.currentStage ?? base.currentStage,
     stages: { ...base.stages, ...input.stages },
+    qaRetries: input.qaRetries ?? base.qaRetries ?? 0,
     updatedAt: new Date().toISOString(),
   };
   featuresDb.set(input.featureId, merged);
@@ -146,7 +148,7 @@ describe("agents/director/director: runDirector", () => {
 
     // The second time Dev runs, the task explicitly tells it that QA found
     // issues (and doesn't repeat the initial implementation prompt).
-    const secondDevTask = runDevAgentMock.mock.calls[1][0].task as string;
+    const secondDevTask = (runDevAgentMock.mock.calls[1] as unknown as [{ task: string }])[0].task;
     expect(secondDevTask).toMatch(/qa-report\.md/i);
   });
 
@@ -184,6 +186,122 @@ describe("agents/director/director: runDirector", () => {
   it("a nonexistent featureId with no task rejects with a clear message, and still closes the client", async () => {
     await expect(runDirector({ featureId: "feat_does_not_exist" })).rejects.toThrow(/doesn't exist/);
     expect(closeMock).toHaveBeenCalled();
+  });
+
+  // Phase 6 — robust resume: this is the regression test for the qaRetries
+  // persistence bug. Before the fix, qaRetries was only a local variable in
+  // runDirector, reset to 0 on every call — so resuming a feature that was
+  // interrupted mid QA-retry-cycle would send Dev the ORIGINAL "implement
+  // the feature" task instead of "QA found issues, fix them", silently
+  // losing the retry context.
+  it("resuming a feature that was interrupted after one QA failure sends Dev the 'fix QA issues' task, not the original one", async () => {
+    const featureId = "feat_2026-08-25_interrupted-retry";
+    featuresDb.set(featureId, {
+      featureId,
+      title: "Feature interrupted mid QA-retry",
+      status: "in_progress",
+      currentStage: "Dev",
+      stages: {
+        PM: { status: "done", artifact: "specs.md", notes: "pm ready" },
+        Architect: { status: "done", artifact: "design.md", notes: "architect ready" },
+        Dev: { status: "in_progress" },
+        QA: { status: "failed", notes: "there are issues\nVERDICT: FAILED" },
+      },
+      // The interrupted run had already gone through one QA failure before
+      // the process died — this is the value that must survive the resume.
+      qaRetries: 1,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await runDirector({ featureId });
+
+    expect(runDevAgentMock).toHaveBeenCalledTimes(1);
+    const devTask = (runDevAgentMock.mock.calls[0] as unknown as [{ task: string }])[0].task;
+    expect(devTask).toMatch(/qa-report\.md/i);
+    expect(devTask).not.toMatch(/implement the feature/i);
+  });
+
+  it("if QA fails again after a resumed retry, the feature blocks at the correct total retry count instead of resetting to 0", async () => {
+    const featureId = "feat_2026-08-25_resume-exhausts-retries";
+    runQaAgentMock.mockResolvedValue("still failing\nVERDICT: FAILED");
+    featuresDb.set(featureId, {
+      featureId,
+      title: "Feature that resumes right before exhausting retries",
+      status: "in_progress",
+      currentStage: "Dev",
+      stages: {
+        PM: { status: "done", artifact: "specs.md", notes: "pm ready" },
+        Architect: { status: "done", artifact: "design.md", notes: "architect ready" },
+        Dev: { status: "in_progress" },
+        QA: { status: "failed", notes: "there are issues\nVERDICT: FAILED" },
+      },
+      // Already at MAX_QA_RETRIES: one more QA failure should block
+      // immediately, without resetting the count and looping again.
+      qaRetries: MAX_QA_RETRIES,
+      updatedAt: new Date().toISOString(),
+    });
+
+    const result = await runDirector({ featureId });
+
+    expect(result.finalState.status).toBe("blocked");
+    expect(runDevAgentMock).toHaveBeenCalledTimes(1);
+    expect(runQaAgentMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("resuming an interrupted feature (status 'in_progress') logs a message noting it was interrupted, distinct from a blocked resume", async () => {
+    const featureId = "feat_2026-08-25_interrupted-message";
+    featuresDb.set(featureId, {
+      featureId,
+      title: "Interrupted feature",
+      status: "in_progress",
+      currentStage: "Dev",
+      stages: { PM: { status: "done" }, Architect: { status: "done" } },
+      qaRetries: 0,
+      updatedAt: new Date().toISOString(),
+    });
+
+    const result = await runDirector({ featureId });
+
+    const logger = new TraceLogger(logsDir);
+    const events = await logger.readTrace(result.featureId);
+    const resumeMsg = events.find((e) => e.resumeKind === "interrupted");
+    expect(resumeMsg).toBeDefined();
+    expect(resumeMsg?.note).toMatch(/interrupted/i);
+  });
+
+  it("resuming a blocked feature logs a message noting it was blocked, not interrupted", async () => {
+    const featureId = "feat_2026-08-25_blocked-message";
+    featuresDb.set(featureId, {
+      featureId,
+      title: "Blocked feature",
+      status: "blocked",
+      currentStage: "QA",
+      stages: {
+        PM: { status: "done" },
+        Architect: { status: "done" },
+        Dev: { status: "done" },
+        QA: { status: "failed", notes: "still failing" },
+      },
+      qaRetries: MAX_QA_RETRIES,
+      updatedAt: new Date().toISOString(),
+    });
+    runQaAgentMock.mockResolvedValueOnce("now it's good\nVERDICT: APPROVED");
+
+    const result = await runDirector({ featureId });
+
+    const logger = new TraceLogger(logsDir);
+    const events = await logger.readTrace(result.featureId);
+    const resumeMsg = events.find((e) => e.resumeKind === "blocked");
+    expect(resumeMsg).toBeDefined();
+    expect(resumeMsg?.note).toMatch(/blocked/i);
+  });
+
+  it("a brand-new feature (not a resume) doesn't log any resumeKind message", async () => {
+    const result = await runDirector({ task: "Fresh feature, never run before" });
+
+    const logger = new TraceLogger(logsDir);
+    const events = await logger.readTrace(result.featureId);
+    expect(events.some((e) => "resumeKind" in e)).toBe(false);
   });
 
   it("logs Director traces with agentRole 'Director' under the featureId as traceId", async () => {

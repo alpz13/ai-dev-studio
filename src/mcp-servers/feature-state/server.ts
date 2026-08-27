@@ -52,6 +52,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description:
               "Partial map by stage, e.g. { \"QA\": { \"status\": \"failed\", \"notes\": \"2 tests failing\" } }",
           },
+          qaRetries: {
+            type: "number",
+            description:
+              "How many times QA has already sent this feature back to Dev. Persisted so a crash-and-resume mid QA-retry-cycle doesn't lose the count.",
+          },
         },
         required: ["featureId"],
       },
@@ -95,6 +100,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           status: args.status as FeatureStatus | undefined,
           currentStage: args.currentStage as StageName | undefined,
           stages: args.stages as Partial<Record<StageName, StageInfo>> | undefined,
+          qaRetries: args.qaRetries as number | undefined,
         });
         return ok(JSON.stringify(updated, null, 2));
       }

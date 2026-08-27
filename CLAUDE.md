@@ -28,7 +28,7 @@ npm run test:mcp-client     # exercises all three feature-state MCP tools
 # --- Require ANTHROPIC_API_KEY in .env ---
 npm run test:core           # Messages API wrapper (sendMessage/streamMessage)
 npm run agent:dev           # run the Dev agent end-to-end
-npm run agent:dev -- feat_mi-feature "Crea un archivo README.md que explique este workspace"
+npm run agent:dev -- feat_my-feature "Create a README.md file that explains this workspace"
 
 # Run an MCP server directly (stdio transport), for manual inspection
 npm run mcp:feature-state

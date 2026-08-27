@@ -29,14 +29,21 @@ export interface AnthropicMessagesClient {
       system: string;
       tools: unknown;
       messages: Anthropic.MessageParam[];
-    }) => Promise<{ content: unknown; stop_reason: string | null }>;
+    }) => Promise<{
+      content: unknown;
+      stop_reason: string | null;
+      // Real Anthropic responses always carry this; optional here only so
+      // a minimal test fake doesn't have to include it when a test isn't
+      // exercising usage tracking (see onUsage below).
+      usage?: { input_tokens: number; output_tokens: number };
+    }>;
   };
 }
 
 export interface McpToolsClient {
   listTools: () => Promise<{ tools: Array<{ name: string; description?: string; inputSchema: unknown }> }>;
   callTool: (input: { name: string; arguments: Record<string, unknown> }) => Promise<{
-    content: Array<{ text?: string }>;
+    content: unknown[];
     isError?: boolean;
   }>;
 }
@@ -76,6 +83,15 @@ export interface RunAgentLoopOptions {
   model?: string;
   maxTurns?: number;
   subagentTool?: SubagentToolConfig;
+  /**
+   * Phase 6 — robust logging: called once, right before returning, with the
+   * total input/output tokens summed across every turn of this loop (each
+   * turn is one `messages.create()` call — a multi-tool-use task can take
+   * several). Optional and additive: existing callers that don't pass it
+   * see no behavior change. See filesystem-agent.ts for how it turns this
+   * into the `tokensUsed` field on the agent_end trace event.
+   */
+  onUsage?: (usage: { inputTokens: number; outputTokens: number }) => void;
 }
 
 const DEFAULT_SUBAGENT_TOOL_NAME = "delegate_to_subagent";
@@ -107,6 +123,8 @@ export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<string> {
 
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: opts.task }];
   let finalText = "";
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
 
   for (let turn = 0; turn < maxTurns; turn++) {
     const response = await opts.anthropic.messages.create({
@@ -116,6 +134,11 @@ export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<string> {
       tools,
       messages,
     });
+
+    if (response.usage) {
+      totalInputTokens += response.usage.input_tokens ?? 0;
+      totalOutputTokens += response.usage.output_tokens ?? 0;
+    }
 
     const content = response.content as unknown as ContentBlock[];
     messages.push({ role: "assistant", content: response.content as unknown as Anthropic.MessageParam["content"] });
@@ -146,7 +169,7 @@ export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<string> {
             name: toolUse.name,
             arguments: toolUse.input as Record<string, unknown>,
           });
-          text = result.content.map((c) => c.text ?? "").join("\n");
+          text = result.content.map((c) => (c as { text?: string }).text ?? "").join("\n");
           isError = Boolean(result.isError);
         }
 
@@ -162,5 +185,6 @@ export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<string> {
     messages.push({ role: "user", content: resultBlocks as unknown as Anthropic.MessageParam["content"] });
   }
 
+  opts.onUsage?.({ inputTokens: totalInputTokens, outputTokens: totalOutputTokens });
   return finalText;
 }

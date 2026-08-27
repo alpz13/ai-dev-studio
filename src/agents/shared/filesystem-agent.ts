@@ -10,7 +10,7 @@ import "dotenv/config";
 import Anthropic from "@anthropic-ai/sdk";
 import { newSpanId, TraceLogger } from "../../observability/trace-logger.js";
 import { connectFilesystemGitClient } from "./filesystem-git-client.js";
-import { runAgentLoop, type SubagentToolConfig } from "./run-agent-loop.js";
+import { runAgentLoop, type AnthropicMessagesClient, type McpToolsClient, type SubagentToolConfig } from "./run-agent-loop.js";
 
 export interface FilesystemAgentOptions {
   featureId: string;
@@ -78,9 +78,10 @@ export function createFilesystemAgent(
                   ? createOpts.subagentSystemPrompt(module)
                   : `${systemPrompt}\n\nYou are a ${agentRole} subagent, delegated by the main ${agentRole} agent to handle exclusively this portion: "${module}". Do not touch files outside that scope unless it's essential for your own task. When you're done, reply with a brief summary in plain text.`;
 
+                let subUsage = { inputTokens: 0, outputTokens: 0 };
                 const finalText = await runAgentLoop({
-                  anthropic,
-                  mcpClient,
+                  anthropic: anthropic as unknown as AnthropicMessagesClient,
+                  mcpClient: mcpClient as unknown as McpToolsClient,
                   systemPrompt: subSystemPrompt,
                   task,
                   traceLogger,
@@ -88,9 +89,15 @@ export function createFilesystemAgent(
                   // Subagents don't in turn get the ability to delegate —
                   // a single level of nesting is enough for what
                   // ARCHITECTURE.md asks for (Dev splitting a large task by module).
+                  onUsage: (usage) => { subUsage = usage; },
                 });
 
-                await traceLogger.log({ ...subTraceCtx, event: "agent_end", output: finalText });
+                await traceLogger.log({
+                  ...subTraceCtx,
+                  event: "agent_end",
+                  output: finalText,
+                  tokensUsed: subUsage.inputTokens + subUsage.outputTokens,
+                });
                 return finalText;
               } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
@@ -101,17 +108,24 @@ export function createFilesystemAgent(
           }
         : undefined;
 
+      let usage = { inputTokens: 0, outputTokens: 0 };
       const finalText = await runAgentLoop({
-        anthropic,
-        mcpClient,
+        anthropic: anthropic as unknown as AnthropicMessagesClient,
+        mcpClient: mcpClient as unknown as McpToolsClient,
         systemPrompt,
         task: opts.task,
         traceLogger,
         traceCtx,
         subagentTool,
+        onUsage: (u) => { usage = u; },
       });
 
-      await traceLogger.log({ ...traceCtx, event: "agent_end", output: finalText });
+      await traceLogger.log({
+        ...traceCtx,
+        event: "agent_end",
+        output: finalText,
+        tokensUsed: usage.inputTokens + usage.outputTokens,
+      });
       return finalText;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
