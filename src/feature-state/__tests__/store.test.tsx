@@ -18,19 +18,19 @@ describe("feature-state/store: FeatureStateStore", () => {
   });
 
   it("readState of a nonexistent feature returns null", async () => {
-    await expect(store.readState("feat_no_existe")).resolves.toBeNull();
+    await expect(store.readState("feat_does_not_exist")).resolves.toBeNull();
   });
 
   it("upsertState creates a new feature with the given values", async () => {
     const created = await store.upsertState({
       featureId: "feat_demo_export-csv",
-      title: "Exportar reportes a CSV",
+      title: "Export reports to CSV",
       status: "in_progress",
       currentStage: "Dev",
       stages: { PM: { status: "done", artifact: "specs.md" } },
     });
 
-    expect(created.title).toBe("Exportar reportes a CSV");
+    expect(created.title).toBe("Export reports to CSV");
     expect(created.currentStage).toBe("Dev");
     expect(created.stages.PM?.status).toBe("done");
     expect(typeof created.updatedAt).toBe("string");
@@ -80,7 +80,7 @@ describe("feature-state/store: FeatureStateStore", () => {
 
   it("listFeatures ignores stray files that aren't feature folders", async () => {
     await store.upsertState({ featureId: "feat_a" });
-    await fs.writeFile(path.join(root, "un-archivo-suelto.txt"), "ruido");
+    await fs.writeFile(path.join(root, "a-stray-file.txt"), "noise");
 
     const all = await store.listFeatures();
 
@@ -88,13 +88,40 @@ describe("feature-state/store: FeatureStateStore", () => {
   });
 
   it("listPending filters out features with status 'done'", async () => {
-    await store.upsertState({ featureId: "feat_activa", status: "in_progress" });
-    await store.upsertState({ featureId: "feat_terminada", status: "done" });
+    await store.upsertState({ featureId: "feat_active", status: "in_progress" });
+    await store.upsertState({ featureId: "feat_finished", status: "done" });
 
     const pending = await store.listPending();
 
     expect(pending).toHaveLength(1);
-    expect(pending[0].featureId).toBe("feat_activa");
+    expect(pending[0].featureId).toBe("feat_active");
+  });
+
+  // Phase 6 — robust resume: qaRetries needs to survive a shallow merge the
+  // same way title/status/currentStage already do, since the Director
+  // persists it precisely so a crash-and-resume mid-QA-retry-cycle doesn't
+  // silently forget how many retries had already happened.
+  it("upsertState defaults qaRetries to 0 for a newly created feature", async () => {
+    const created = await store.upsertState({ featureId: "feat_fresh" });
+
+    expect(created.qaRetries).toBe(0);
+  });
+
+  it("upsertState persists a given qaRetries", async () => {
+    const created = await store.upsertState({ featureId: "feat_retried", qaRetries: 2 });
+
+    expect(created.qaRetries).toBe(2);
+  });
+
+  it("a later update that doesn't mention qaRetries preserves the previously persisted value", async () => {
+    await store.upsertState({ featureId: "feat_demo", qaRetries: 1 });
+
+    const afterUnrelatedUpdate = await store.upsertState({
+      featureId: "feat_demo",
+      stages: { DevOps: { status: "done" } },
+    });
+
+    expect(afterUnrelatedUpdate.qaRetries).toBe(1);
   });
 });
 
@@ -104,7 +131,7 @@ describe("feature-state/store: resolveFeaturesDir", () => {
   });
 
   it("keeps an absolute path as-is", () => {
-    const abs = path.resolve(os.tmpdir(), "algun-dir");
+    const abs = path.resolve(os.tmpdir(), "some-dir");
     expect(resolveFeaturesDir(abs)).toBe(abs);
   });
 });

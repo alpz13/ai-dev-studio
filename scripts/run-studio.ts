@@ -6,7 +6,8 @@
  *   npm run studio -- "I want to export reports to CSV"
  *   npm run studio -- --resume feat_2026-08-24_export-reports-to-csv
  */
-import { runDirector } from "../src/agents/director/director.js";
+import { runDirector, MAX_QA_RETRIES } from "../src/agents/director/director.js";
+import { connectFeatureStateClient, getFeatureState, type FeatureStateToolsClient } from "../src/agents/shared/feature-state-client.js";
 
 async function main() {
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -34,11 +35,34 @@ async function main() {
 
   console.log(featureId ? `== Resuming feature: ${featureId} ==` : `== New feature: "${task}" ==`);
 
+  // Phase 6 — robust resume: before handing off to the Director, tell the
+  // person up front what kind of resume this is, rather than letting it
+  // look like a silent replay. "in_progress" means the previous run was
+  // interrupted (crash/kill/restart) mid-stage with nothing marking it
+  // failed; "blocked" means it stopped on purpose (an agent errored, or QA
+  // exhausted its retries) and is presumably being resumed after a fix.
+  if (featureId) {
+    const stateClient = await connectFeatureStateClient("run-studio-cli-precheck");
+    try {
+      const existing = await getFeatureState(stateClient as unknown as FeatureStateToolsClient, featureId);
+      if (existing && existing.status === "in_progress") {
+        console.log(
+          `   (was interrupted mid-stage "${existing.currentStage}" — resuming from there, not restarting)`,
+        );
+      } else if (existing && existing.status === "blocked") {
+        console.log(`   (was blocked at stage "${existing.currentStage}" — resuming from there)`);
+      }
+    } finally {
+      await stateClient.close();
+    }
+  }
+
   const { featureId: resolvedId, finalState } = await runDirector({ featureId, task });
 
   console.log(`\n== Result (${resolvedId}) ==`);
   console.log(`status: ${finalState.status}`);
   console.log(`currentStage: ${finalState.currentStage}`);
+  console.log(`qaRetries: ${finalState.qaRetries ?? 0}/${MAX_QA_RETRIES}`);
   console.log(JSON.stringify(finalState.stages, null, 2));
   console.log(`\nWorkspace: ./workspaces/${resolvedId}`);
   console.log(`Full trace: ./logs/${resolvedId}.jsonl`);

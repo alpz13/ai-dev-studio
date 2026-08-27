@@ -114,16 +114,18 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
   const directorCtx = { traceId: featureId, spanId: directorSpanId, agentRole: "Director" };
 
   const stateClient = await connectFeatureStateClient();
+  const featureClient = stateClient as unknown as FeatureStateToolsClient;
 
   try {
     await traceLogger.log({ ...directorCtx, event: "agent_start", input: { featureId, task: opts.task } });
 
-    let state = await getFeatureState(stateClient, featureId);
+    let state = await getFeatureState(featureClient, featureId);
+    const isResuming = state !== null;
     if (!state) {
       if (!opts.task) {
         throw new Error(`Feature "${featureId}" doesn't exist and no task was given to create it.`);
       }
-      state = await updateFeatureState(stateClient, {
+      state = await updateFeatureState(featureClient, {
         featureId,
         title: opts.task,
         status: "in_progress",
@@ -131,8 +133,33 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
       });
     }
 
+    // Phase 6 — robust resume: an existing feature that isn't "done" was
+    // left mid-pipeline by an earlier run. Distinguish two cases in the
+    // trace so a person watching (CLI or web UI) understands what's
+    // happening instead of it silently looking like a fresh run:
+    //   - status "in_progress": the process was interrupted (crash, kill,
+    //     restart) while actively working a stage — nothing marked it
+    //     failed, it just never finished. We resume that stage.
+    //   - status "blocked": the previous run stopped on purpose (an agent
+    //     threw, or QA exhausted its retries) and is now being resumed
+    //     after presumably being looked at / fixed.
+    if (isResuming && state.status !== "done") {
+      const kind = state.status === "blocked" ? "blocked" : "interrupted";
+      await traceLogger.log({
+        ...directorCtx,
+        event: "message",
+        stage: state.currentStage,
+        note:
+          kind === "interrupted"
+            ? `Resuming feature "${featureId}": it was interrupted mid-stage "${state.currentStage}" (no clean failure recorded) — continuing from there instead of restarting.`
+            : `Resuming feature "${featureId}": it was blocked at stage "${state.currentStage}" — continuing from there.`,
+        resumeKind: kind,
+        qaRetries: state.qaRetries ?? 0,
+      });
+    }
+
     const workspaceRoot = `workspaces/${featureId}`;
-    let qaRetries = 0;
+    let qaRetries = state.qaRetries ?? 0;
     let stageIndex = Math.max(0, STAGE_ORDER.indexOf(state.currentStage));
 
     while (stageIndex < STAGE_ORDER.length) {
@@ -144,14 +171,14 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
       }
 
       await traceLogger.log({ ...directorCtx, event: "message", stage, note: "starting stage" });
-      state = await updateFeatureState(stateClient, { featureId, currentStage: stage, status: "in_progress" });
+      state = await updateFeatureState(featureClient, { featureId, currentStage: stage, status: "in_progress" });
 
       try {
         const outcome = await runStage(stage, { featureId, workspaceRoot, title: state.title, qaRetries });
 
         if (stage === "QA" && !outcome.approved) {
           if (qaRetries >= MAX_QA_RETRIES) {
-            state = await updateFeatureState(stateClient, {
+            state = await updateFeatureState(featureClient, {
               featureId,
               status: "blocked",
               stages: { QA: { status: "failed", notes: outcome.summary } },
@@ -165,7 +192,7 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
           }
 
           qaRetries++;
-          state = await updateFeatureState(stateClient, {
+          state = await updateFeatureState(featureClient, {
             featureId,
             currentStage: "Dev",
             // Important: Dev's status also needs to be reset to
@@ -176,6 +203,11 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
               Dev: { status: "in_progress" },
               QA: { status: "failed", notes: outcome.summary },
             },
+            // Persisted (not just kept in the local `qaRetries` variable)
+            // so that a crash-and-resume mid retry-cycle sends Dev the "QA
+            // found issues" task again instead of silently reverting to
+            // the original "implement the feature" task — see store.ts.
+            qaRetries,
           });
           await traceLogger.log({
             ...directorCtx,
@@ -187,14 +219,14 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
           continue;
         }
 
-        state = await updateFeatureState(stateClient, {
+        state = await updateFeatureState(featureClient, {
           featureId,
           stages: { [stage]: { status: "done", artifact: outcome.artifact, notes: outcome.summary } },
         });
         stageIndex++;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        state = await updateFeatureState(stateClient, {
+        state = await updateFeatureState(featureClient, {
           featureId,
           status: "blocked",
           stages: { [stage]: { status: "failed", notes: message } },
@@ -204,7 +236,7 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
       }
     }
 
-    state = await updateFeatureState(stateClient, { featureId, status: "done" });
+    state = await updateFeatureState(featureClient, { featureId, status: "done" });
     await traceLogger.log({ ...directorCtx, event: "agent_end", output: "Pipeline complete." });
     return { featureId, finalState: state };
   } finally {

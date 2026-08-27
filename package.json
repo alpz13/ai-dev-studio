@@ -15,6 +15,8 @@
     "mcp:filesystem-git": "tsx src/mcp-servers/filesystem-git/server.ts",
     "agent:dev": "tsx scripts/run-dev-agent.ts",
     "studio": "tsx scripts/run-studio.ts",
+    "web": "tsx scripts/run-web.ts",
+    "trace-summary": "tsx scripts/trace-summary.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

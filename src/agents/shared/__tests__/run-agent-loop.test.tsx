@@ -208,6 +208,96 @@ describe("agents/shared/run-agent-loop", () => {
   });
 });
 
+// Phase 6 — robust logging: onUsage is called once, right before the loop
+// returns, with input/output tokens summed across every messages.create()
+// turn. Additive and optional, so none of the tests above (which never
+// pass onUsage, and whose fake responses never include `usage`) needed to
+// change.
+describe("agents/shared/run-agent-loop: onUsage (Phase 6)", () => {
+  let mcpClient: McpToolsClient & { calls: Array<{ name: string; arguments: Record<string, unknown> }> };
+
+  beforeEach(() => {
+    mcpClient = {
+      calls: [],
+      listTools: async () => ({
+        tools: [{ name: "write_file", description: "Writes a file", inputSchema: { type: "object" } }],
+      }),
+      callTool: async (input) => {
+        mcpClient.calls.push(input);
+        return { content: [{ text: "Written" }], isError: false };
+      },
+    };
+  });
+
+  it("sums input/output tokens across every turn and reports the total once, at the end", async () => {
+    let call = 0;
+    const anthropic: AnthropicMessagesClient = {
+      messages: {
+        create: async () => {
+          call++;
+          return call === 1
+            ? { ...toolUseResponse("toolu_1", "write_file", { path: "a.txt", content: "x" }), usage: { input_tokens: 100, output_tokens: 20 } }
+            : { ...textResponse("done"), usage: { input_tokens: 150, output_tokens: 30 } };
+        },
+      },
+    };
+    const usageReports: Array<{ inputTokens: number; outputTokens: number }> = [];
+
+    await runAgentLoop({
+      anthropic,
+      mcpClient,
+      systemPrompt: "s",
+      task: "t",
+      traceLogger: fakeTraceLogger(),
+      traceCtx,
+      onUsage: (usage) => usageReports.push(usage),
+    });
+
+    expect(usageReports).toEqual([{ inputTokens: 250, outputTokens: 50 }]);
+  });
+
+  it("defaults to zero without crashing when a response carries no usage field", async () => {
+    const anthropic: AnthropicMessagesClient = {
+      messages: { create: async () => textResponse("done") }, // no `usage` at all
+    };
+    const usageReports: Array<{ inputTokens: number; outputTokens: number }> = [];
+
+    await runAgentLoop({
+      anthropic,
+      mcpClient,
+      systemPrompt: "s",
+      task: "t",
+      traceLogger: fakeTraceLogger(),
+      traceCtx,
+      onUsage: (usage) => usageReports.push(usage),
+    });
+
+    expect(usageReports).toEqual([{ inputTokens: 0, outputTokens: 0 }]);
+  });
+
+  it("still reports accumulated usage even when maxTurns is exhausted without a final answer", async () => {
+    const anthropic: AnthropicMessagesClient = {
+      messages: {
+        create: async () => ({ ...toolUseResponse("toolu_x", "write_file", { path: "a.txt", content: "x" }), usage: { input_tokens: 10, output_tokens: 5 } }),
+      },
+    };
+    const usageReports: Array<{ inputTokens: number; outputTokens: number }> = [];
+
+    await runAgentLoop({
+      anthropic,
+      mcpClient,
+      systemPrompt: "s",
+      task: "t",
+      traceLogger: fakeTraceLogger(),
+      traceCtx,
+      maxTurns: 2,
+      onUsage: (usage) => usageReports.push(usage),
+    });
+
+    expect(usageReports).toEqual([{ inputTokens: 20, outputTokens: 10 }]);
+  });
+});
+
 // Phase 4 — SubAgents: delegate_to_subagent is a synthetic tool (it does
 // not come from the MCP) that only appears when `subagentTool` is passed,
 // and when the model invokes it the loop calls `subagentTool.run()`

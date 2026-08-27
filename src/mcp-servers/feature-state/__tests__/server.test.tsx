@@ -88,7 +88,7 @@ describe("mcp-servers/feature-state/server", () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
     const result = await callToolHandler({
-      params: { name: "get_feature_state", arguments: { featureId: "feat_no_existe" } },
+      params: { name: "get_feature_state", arguments: { featureId: "feat_does_not_exist" } },
     });
 
     expect(result.isError).toBeUndefined();
@@ -137,24 +137,47 @@ describe("mcp-servers/feature-state/server", () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
     await callToolHandler({
-      params: { name: "update_feature_state", arguments: { featureId: "feat_activa", status: "in_progress" } },
+      params: { name: "update_feature_state", arguments: { featureId: "feat_active", status: "in_progress" } },
     });
     await callToolHandler({
-      params: { name: "update_feature_state", arguments: { featureId: "feat_lista", status: "done" } },
+      params: { name: "update_feature_state", arguments: { featureId: "feat_finished", status: "done" } },
     });
 
     const result = await callToolHandler({ params: { name: "list_pending_features", arguments: {} } });
     const pending = JSON.parse(textOf(result)) as Array<{ featureId: string }>;
 
-    expect(pending.map((f) => f.featureId)).toEqual(["feat_activa"]);
+    expect(pending.map((f) => f.featureId)).toEqual(["feat_active"]);
   });
 
   it("an unknown tool responds isError: true instead of dropping the connection", async () => {
     const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
 
-    const result = await callToolHandler({ params: { name: "no_existe", arguments: {} } });
+    const result = await callToolHandler({ params: { name: "does_not_exist", arguments: {} } });
 
     expect(result.isError).toBe(true);
     expect(textOf(result)).toMatch(/Unknown tool/);
+  });
+
+  // Phase 6 — robust resume: qaRetries needs to be wired through the MCP
+  // tool boundary too (inputSchema + handler), not just the store layer,
+  // since the Director talks to the store exclusively through this server.
+  it("update_feature_state persists qaRetries and a later update without it preserves the value", async () => {
+    const callToolHandler = handlers.get(CALL_TOOL_SCHEMA)!;
+
+    const first = await callToolHandler({
+      params: {
+        name: "update_feature_state",
+        arguments: { featureId: "feat_demo", currentStage: "Dev", qaRetries: 2 },
+      },
+    });
+    expect(JSON.parse(textOf(first)).qaRetries).toBe(2);
+
+    const second = await callToolHandler({
+      params: {
+        name: "update_feature_state",
+        arguments: { featureId: "feat_demo", stages: { DevOps: { status: "done" } } },
+      },
+    });
+    expect(JSON.parse(textOf(second)).qaRetries).toBe(2);
   });
 });

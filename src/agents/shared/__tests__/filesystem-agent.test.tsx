@@ -98,6 +98,39 @@ describe("agents/shared/filesystem-agent: createFilesystemAgent", () => {
     expect(events.at(-1)?.event).toBe("error");
   });
 
+  // Phase 6 — robust logging: tokensUsed on agent_end comes from
+  // run-agent-loop.ts's onUsage callback, summed from the real response's
+  // usage.input_tokens/output_tokens. Only these two dedicated tests pass a
+  // `usage` field — every other test above keeps using the plain
+  // textResponse() helper (no usage at all) and is unaffected.
+  it("agent_end carries tokensUsed, summed from the Anthropic response's usage field", async () => {
+    createMock.mockResolvedValueOnce({
+      content: [{ type: "text", text: "ok" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 340, output_tokens: 60 },
+    });
+    const run = createFilesystemAgent("Dev", "system");
+
+    await run({ featureId, task: "something", workspaceRoot: `workspaces/${featureId}` });
+
+    const logger = new TraceLogger(logsDir);
+    const events = await logger.readTrace(featureId);
+    const agentEnd = events.find((e) => e.event === "agent_end");
+    expect(agentEnd?.tokensUsed).toBe(400);
+  });
+
+  it("agent_end still carries tokensUsed: 0 (not undefined) when the response has no usage field", async () => {
+    createMock.mockResolvedValueOnce(textResponse("ok"));
+    const run = createFilesystemAgent("Dev", "system");
+
+    await run({ featureId, task: "something", workspaceRoot: `workspaces/${featureId}` });
+
+    const logger = new TraceLogger(logsDir);
+    const events = await logger.readTrace(featureId);
+    const agentEnd = events.find((e) => e.event === "agent_end");
+    expect(agentEnd?.tokensUsed).toBe(0);
+  });
+
   it("each agentRole generates its own spanId with a lowercase prefix", async () => {
     createMock.mockResolvedValueOnce(textResponse("ok"));
     const run = createFilesystemAgent("Architect", "system");
@@ -194,6 +227,10 @@ describe("agents/shared/filesystem-agent: createFilesystemAgent with subagents (
 
     const subEnd = events.find((e) => e.event === "agent_end" && e.spanId === subStart?.spanId);
     expect(subEnd?.output).toBe("Subagent: validation added.");
+    // Phase 6: the subagent's own agent_end carries its own tokensUsed,
+    // tracked separately from the parent's — none of these three mocked
+    // responses set `usage`, so 0 (not undefined/NaN) is the right value.
+    expect(subEnd?.tokensUsed).toBe(0);
 
     const parentToolResult = events.find((e) => e.event === "tool_result" && e.tool === "delegate_to_subagent");
     expect(String(parentToolResult?.output)).toBe("Subagent: validation added.");

@@ -25,7 +25,7 @@ describe("filesystem-git/fs-ops", () => {
     });
 
     it("blocks a relative path traversal", () => {
-      expect(() => resolveSafePath(root, "../fuera.txt")).toThrow(/outside the allowed workspace/);
+      expect(() => resolveSafePath(root, "../outside.txt")).toThrow(/outside the allowed workspace/);
     });
 
     it("blocks an absolute path outside the workspace", () => {
@@ -50,9 +50,9 @@ describe("filesystem-git/fs-ops", () => {
     });
 
     it("creates intermediate folders when writing to a subpath", async () => {
-      await writeTextFile(root, "a/b/c.txt", "contenido");
+      await writeTextFile(root, "a/b/c.txt", "content");
 
-      await expect(readTextFile(root, "a/b/c.txt")).resolves.toBe("contenido");
+      await expect(readTextFile(root, "a/b/c.txt")).resolves.toBe("content");
     });
 
     it("writing over an existing file overwrites it", async () => {
@@ -63,37 +63,37 @@ describe("filesystem-git/fs-ops", () => {
     });
 
     it("reading a nonexistent file rejects", async () => {
-      await expect(readTextFile(root, "no-existe.txt")).rejects.toThrow();
+      await expect(readTextFile(root, "does-not-exist.txt")).rejects.toThrow();
     });
 
     it("writing outside the workspace rejects instead of writing to disk", async () => {
-      await expect(writeTextFile(root, "../fuera.txt", "x")).rejects.toThrow(/outside the allowed workspace/);
+      await expect(writeTextFile(root, "../outside.txt", "x")).rejects.toThrow(/outside the allowed workspace/);
     });
   });
 
   describe("listDirEntries", () => {
     it("lists files and folders with their type", async () => {
       await writeTextFile(root, "file.txt", "x");
-      await fs.mkdir(path.join(root, "carpeta"));
+      await fs.mkdir(path.join(root, "folder"));
 
       const entries = await listDirEntries(root, ".");
 
       expect(entries).toContainEqual({ name: "file.txt", type: "file" });
-      expect(entries).toContainEqual({ name: "carpeta", type: "dir" });
+      expect(entries).toContainEqual({ name: "folder", type: "dir" });
     });
 
     it("lists the workspace root by default", async () => {
-      await writeTextFile(root, "solo.txt", "x");
+      await writeTextFile(root, "only.txt", "x");
 
       const entries = await listDirEntries(root);
 
-      expect(entries.some((e) => e.name === "solo.txt")).toBe(true);
+      expect(entries.some((e) => e.name === "only.txt")).toBe(true);
     });
 
     it("an empty folder returns []", async () => {
-      await fs.mkdir(path.join(root, "vacia"));
+      await fs.mkdir(path.join(root, "empty"));
 
-      const entries = await listDirEntries(root, "vacia");
+      const entries = await listDirEntries(root, "empty");
 
       expect(entries).toEqual([]);
     });

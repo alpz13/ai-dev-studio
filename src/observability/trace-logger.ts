@@ -5,6 +5,7 @@
  * parentSpanId = who invoked it (useful later on for nested
  * subagents). One append-only JSONL file per featureId in logs/.
  */
+import { EventEmitter } from "node:events";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -38,6 +39,21 @@ export function resolveLogsDir(baseDir: string = process.env.LOGS_DIR ?? "logs")
   return path.isAbsolute(baseDir) ? baseDir : path.resolve(process.cwd(), baseDir);
 }
 
+/**
+ * Phase 5 — Chat with streaming: a process-wide EventEmitter, separate from
+ * any single TraceLogger instance (agents create a fresh `new TraceLogger()`
+ * per call — see filesystem-agent.ts/director.ts), so every log() call
+ * emits here regardless of which instance wrote it. A live consumer
+ * subscribes with `traceEvents.on(featureId, listener)` to get that
+ * feature's events as they happen, without polling the JSONL file — see
+ * src/web/server.ts's SSE endpoint. The on-disk event schema is unchanged;
+ * this only adds a live side-channel for the same events.
+ */
+export const traceEvents = new EventEmitter();
+// Many concurrent SSE clients (and features) may subscribe at once; this
+// is not a leak, just this app's expected fan-out.
+traceEvents.setMaxListeners(0);
+
 export class TraceLogger {
   constructor(private readonly logsDir: string = resolveLogsDir()) {}
 
@@ -49,6 +65,7 @@ export class TraceLogger {
     await fs.mkdir(this.logsDir, { recursive: true });
     const full: TraceEvent = { ...event, timestamp: new Date().toISOString() };
     await fs.appendFile(this.filePath(event.traceId), `${JSON.stringify(full)}\n`, "utf-8");
+    traceEvents.emit(event.traceId, full);
     return full;
   }
 

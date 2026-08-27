@@ -40,7 +40,7 @@ Ideas to evaluate: a per-feature path allowlist (with PM or the Director declari
 
 ### 3.3 A real test runner
 
-QA (`src/agents/qa/agent.ts`) reads code and runs `git_diff`, but doesn't execute any real test suite — its verdict (`VEREDICTO: APPROVED`/`FAILED`) is a reasoned read by the model, not a green/red run. ARCHITECTURE.md §2 and §5 already mention a `test-runner` MCP that was never built (only `filesystem-git` and `feature-state` were made).
+QA (`src/agents/qa/agent.ts`) reads code and runs `git_diff`, but doesn't execute any real test suite — its verdict (`VERDICT: APPROVED`/`FAILED`) is a reasoned read by the model, not a green/red run. ARCHITECTURE.md §2 and §5 already mention a `test-runner` MCP that was never built (only `filesystem-git` and `feature-state` were made).
 
 Before trusting QA's verdict against a real repo: build that MCP (a tool that runs `npm test` or whatever the right command is inside `WORKSPACE_ROOT` and returns the real result), and have QA's system prompt use it as part of its review instead of relying only on reading code.
 
