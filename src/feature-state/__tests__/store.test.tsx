@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FeatureStateStore, resolveFeaturesDir } from "../../feature-state/store.js";
 
 describe("feature-state/store: FeatureStateStore", () => {
@@ -133,5 +133,64 @@ describe("feature-state/store: resolveFeaturesDir", () => {
   it("keeps an absolute path as-is", () => {
     const abs = path.resolve(os.tmpdir(), "some-dir");
     expect(resolveFeaturesDir(abs)).toBe(abs);
+  });
+});
+
+describe("FeatureStateStore: atomic writes", () => {
+  let root: string;
+  let store: FeatureStateStore;
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "ai-dev-studio-test-"));
+    store = new FeatureStateStore(root);
+  });
+
+  afterEach(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("does not corrupt state.json if the final rename step fails", async () => {
+    await store.upsertState({ featureId: "feat_demo", title: "Before" });
+
+    const fsPromises = (await import("node:fs")).promises;
+    const spy = vi.spyOn(fsPromises, "rename").mockRejectedValueOnce(new Error("disk full"));
+
+    await expect(store.upsertState({ featureId: "feat_demo", title: "After" })).rejects.toThrow("disk full");
+
+    const stillThere = await store.readState("feat_demo");
+    expect(stillThere?.title).toBe("Before");
+
+    spy.mockRestore();
+  });
+});
+
+describe("FeatureStateStore: locking", () => {
+  let root: string;
+  let store: FeatureStateStore;
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "ai-dev-studio-test-"));
+    store = new FeatureStateStore(root);
+  });
+
+  afterEach(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("acquireLock returns true the first time and false while still held", async () => {
+    const first = await store.acquireLock("feat_demo");
+    const second = await store.acquireLock("feat_demo");
+
+    expect(first).toBe(true);
+    expect(second).toBe(false);
+  });
+
+  it("releaseLock allows acquiring the same feature again", async () => {
+    await store.acquireLock("feat_demo");
+
+    await store.releaseLock("feat_demo");
+    const reacquired = await store.acquireLock("feat_demo");
+
+    expect(reacquired).toBe(true);
   });
 });

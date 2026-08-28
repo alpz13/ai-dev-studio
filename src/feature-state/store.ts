@@ -73,8 +73,38 @@ export class FeatureStateStore {
     const dir = path.join(this.featuresDir, state.featureId);
     await fs.mkdir(dir, { recursive: true });
     const toWrite: FeatureState = { ...state, updatedAt: new Date().toISOString() };
-    await fs.writeFile(this.statePath(state.featureId), JSON.stringify(toWrite, null, 2), "utf-8");
+    const finalPath = this.statePath(state.featureId);
+    const tmpPath = `${finalPath}.tmp`;
+    // Write to a temp file, then rename over the real path: rename() is
+    // atomic on the same filesystem on both POSIX and Windows, so a crash
+    // or failure mid-write can never leave state.json truncated/corrupt.
+    await fs.writeFile(tmpPath, JSON.stringify(toWrite, null, 2), "utf-8");
+    await fs.rename(tmpPath, finalPath);
     return toWrite;
+  }
+
+  private lockPath(featureId: string): string {
+    return path.join(this.featuresDir, featureId, ".lock");
+  }
+
+  /**
+   * Atomic mutex via mkdir, which fails with EEXIST if the directory
+   * already exists — no locking library needed. Returns false if another
+   * run already holds the lock for this featureId.
+   */
+  async acquireLock(featureId: string): Promise<boolean> {
+    await fs.mkdir(path.join(this.featuresDir, featureId), { recursive: true });
+    try {
+      await fs.mkdir(this.lockPath(featureId));
+      return true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") return false;
+      throw err;
+    }
+  }
+
+  async releaseLock(featureId: string): Promise<void> {
+    await fs.rm(this.lockPath(featureId), { recursive: true, force: true });
   }
 
   /** Creates the feature if it doesn't exist, or shallow-merges the given fields if it does. */
