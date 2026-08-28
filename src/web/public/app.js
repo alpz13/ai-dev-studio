@@ -17,6 +17,27 @@
   var currentSource = null;
   var stageStatus = {};
 
+  var AUTH_TOKEN_KEY = "ai-dev-studio-auth-token";
+
+  function getAuthToken() {
+    var token = localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!token) {
+      token = window.prompt("Enter the AUTH_TOKEN for this AI Dev Studio instance:") || "";
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+    }
+    return token;
+  }
+
+  function authedFetch(url, opts) {
+    opts = opts || {};
+    opts.headers = opts.headers || {};
+    opts.headers["Authorization"] = "Bearer " + getAuthToken();
+    return fetch(url, opts).then(function (res) {
+      if (res.status === 401) localStorage.removeItem(AUTH_TOKEN_KEY);
+      return res;
+    });
+  }
+
   function resetStages() {
     stageStatus = {};
     STAGES.forEach(function (s) { stageStatus[s] = "pending"; });
@@ -117,7 +138,7 @@
   }
 
   function loadSummary(featureId) {
-    fetch("/api/features/" + encodeURIComponent(featureId) + "/summary")
+    authedFetch("/api/features/" + encodeURIComponent(featureId) + "/summary")
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (summary) { if (summary) renderSummary(summary); })
       .catch(function () {
@@ -137,7 +158,9 @@
     resumePanel.hidden = true;
     sessionPanel.hidden = false;
 
-    currentSource = new EventSource("/api/features/" + encodeURIComponent(featureId) + "/stream");
+    // EventSource can't set request headers, so the stream route (and only
+    // that route, server-side) also accepts the token as a query param.
+    currentSource = new EventSource("/api/features/" + encodeURIComponent(featureId) + "/stream?token=" + encodeURIComponent(getAuthToken()));
     currentSource.onmessage = function (e) {
       var event = JSON.parse(e.data);
       appendLog(event);
@@ -156,7 +179,7 @@
   }
 
   function loadPendingFeatures() {
-    fetch("/api/features")
+    authedFetch("/api/features")
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var features = data.features || [];
@@ -188,7 +211,7 @@
   }
 
   function start(body) {
-    fetch("/api/features", {
+    authedFetch("/api/features", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
