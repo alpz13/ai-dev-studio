@@ -18,7 +18,7 @@
     "web": "tsx scripts/run-web.ts",
     "trace-summary": "tsx scripts/trace-summary.ts",
     "typecheck": "tsc --noEmit",
-    "build": "tsc && node scripts/copy-static-assets.mjs",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-static-assets.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

@@ -9,6 +9,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { FeatureState, UpdateFeatureStateInput } from "../../feature-state/store.js";
+import { mcpServerCommand } from "./mcp-command.js";
 
 export interface FeatureStateToolsClient {
   callTool: (input: { name: string; arguments: Record<string, unknown> }) => Promise<{
@@ -18,10 +19,7 @@ export interface FeatureStateToolsClient {
 }
 
 export async function connectFeatureStateClient(clientName = "feature-state-client"): Promise<Client> {
-  const transport = new StdioClientTransport({
-    command: "npx",
-    args: ["tsx", "src/mcp-servers/feature-state/server.ts"],
-  });
+  const transport = new StdioClientTransport(mcpServerCommand("src/mcp-servers/feature-state/server.ts"));
   const client = new Client({ name: clientName, version: "0.1.0" }, { capabilities: {} });
   await client.connect(transport);
   return client;

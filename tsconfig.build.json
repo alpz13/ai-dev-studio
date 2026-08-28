@@ -1,0 +1,13 @@
+{
+  // Production build config. Identical to tsconfig.json except that test
+  // files are excluded: they `import "vitest"`, a devDependency that the
+  // runtime image doesn't install, so emitting them into dist/ ships dead
+  // code with unresolvable imports.
+  //
+  // The base tsconfig.json deliberately still INCLUDES __tests__, so that
+  // `npm run typecheck` (the project's primary quality gate) keeps
+  // type-checking the tests. `exclude` replaces rather than merges with the
+  // parent's, so the base entries are restated here.
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "features", "logs", "workspaces", "**/__tests__/**"]
+}
