@@ -2,7 +2,7 @@
  * Translates tools described by an MCP server (tools.list) into the shape
  * expected by the `tools` parameter of Anthropic's Messages API. This is
  * pure data logic: it doesn't depend on either SDK, so it can be tested
- * in isolation (see scripts/test-agent-loop-helpers.ts).
+ * in isolation (see scripts/agent-loop-helpers.test.ts).
  */
 
 export interface McpToolLike {

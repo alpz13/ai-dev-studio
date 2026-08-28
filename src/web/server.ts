@@ -30,7 +30,14 @@ import { traceEvents, TraceLogger, type TraceEvent } from "../observability/trac
 import { summarizeTrace } from "../observability/trace-summary.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const INDEX_HTML_PATH = path.join(__dirname, "public", "index.html");
+const PUBLIC_DIR = path.join(__dirname, "public");
+const INDEX_HTML_PATH = path.join(PUBLIC_DIR, "index.html");
+
+const STATIC_MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+};
 
 async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -153,6 +160,23 @@ export function createWebServer(_opts: WebServerOptions = {}): Server {
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
           res.end(html);
           return;
+        }
+
+        // Serve static assets (style.css, app.js) from public/
+        if (req.method === "GET" && !pathname.startsWith("/api/")) {
+          const ext = path.extname(pathname);
+          const mime = STATIC_MIME[ext];
+          if (mime) {
+            const filePath = path.join(PUBLIC_DIR, path.basename(pathname));
+            try {
+              const content = await readFile(filePath, "utf-8");
+              res.writeHead(200, { "Content-Type": mime });
+              res.end(content);
+            } catch {
+              sendJson(res, 404, { error: "not found" });
+            }
+            return;
+          }
         }
 
         if (req.method === "GET" && pathname === "/api/features") {

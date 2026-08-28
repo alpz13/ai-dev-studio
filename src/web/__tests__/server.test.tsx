@@ -81,7 +81,7 @@ describe("web/server", () => {
     expect(res.headers.get("content-type")).toMatch(/text\/html/);
     const body = await res.text();
     expect(body).toMatch(/AI Dev Studio/);
-    expect(body).toMatch(/EventSource/);
+    expect(body).toMatch(/app\.js/);
   });
 
   it("GET /api/features returns the pending features from the Feature State MCP client", async () => {

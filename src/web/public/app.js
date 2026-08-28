@@ -183,7 +183,7 @@
         pendingListEl.appendChild(ul);
       })
       .catch(function () {
-        pendingListEl.innerHTML = '<p class="empty">Couldn't load pending features.</p>';
+        pendingListEl.innerHTML = '<p class="empty">Couldn\'t load pending features.</p>';
       });
   }
 
