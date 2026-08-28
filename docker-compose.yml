@@ -1,0 +1,12 @@
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./features:/app/features
+      - ./logs:/app/logs
+      - ./workspaces:/app/workspaces
+    restart: unless-stopped
