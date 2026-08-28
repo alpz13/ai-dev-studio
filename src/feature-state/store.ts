@@ -44,6 +44,8 @@ export interface UpdateFeatureStateInput {
   qaRetries?: number;
 }
 
+const LOCK_STALE_MS = 30 * 60 * 1000; // 30 minutes — long enough to cover a full pipeline run, short enough that a crashed lock doesn't block a feature indefinitely.
+
 export function resolveFeaturesDir(baseDir = process.env.FEATURES_DIR ?? "features"): string {
   return path.isAbsolute(baseDir) ? baseDir : path.resolve(process.cwd(), baseDir);
 }
@@ -87,20 +89,48 @@ export class FeatureStateStore {
     return path.join(this.featuresDir, featureId, ".lock");
   }
 
+  private ownerPath(featureId: string): string {
+    return path.join(this.lockPath(featureId), "owner.json");
+  }
+
+  private async isLockStale(featureId: string): Promise<boolean> {
+    try {
+      const raw = await fs.readFile(this.ownerPath(featureId), "utf-8");
+      const { startedAt } = JSON.parse(raw) as { startedAt: number };
+      return Date.now() - startedAt > LOCK_STALE_MS;
+    } catch {
+      // No readable owner record (an older lock format, or a crash between
+      // mkdir and writing owner.json): treat it as orphaned rather than
+      // block forever.
+      return true;
+    }
+  }
+
   /**
    * Atomic mutex via mkdir, which fails with EEXIST if the directory
    * already exists — no locking library needed. Returns false if another
-   * run already holds the lock for this featureId.
+   * run already holds the lock for this featureId. A lock older than
+   * LOCK_STALE_MS is treated as abandoned (the holder crashed or was
+   * killed without releasing it) and reclaimed automatically, so a
+   * container restart never permanently blocks a feature.
    */
   async acquireLock(featureId: string): Promise<boolean> {
     await fs.mkdir(path.join(this.featuresDir, featureId), { recursive: true });
     try {
       await fs.mkdir(this.lockPath(featureId));
-      return true;
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "EEXIST") return false;
-      throw err;
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      if (!(await this.isLockStale(featureId))) return false;
+      await this.releaseLock(featureId);
+      try {
+        await fs.mkdir(this.lockPath(featureId));
+      } catch (retryErr) {
+        if ((retryErr as NodeJS.ErrnoException).code === "EEXIST") return false;
+        throw retryErr;
+      }
     }
+    await fs.writeFile(this.ownerPath(featureId), JSON.stringify({ pid: process.pid, startedAt: Date.now() }), "utf-8");
+    return true;
   }
 
   async releaseLock(featureId: string): Promise<void> {

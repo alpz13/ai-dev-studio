@@ -193,4 +193,22 @@ describe("FeatureStateStore: locking", () => {
 
     expect(reacquired).toBe(true);
   });
+
+  it("reclaims a stale lock (older than LOCK_STALE_MS) instead of blocking forever", async () => {
+    await store.acquireLock("feat_demo");
+    const ownerPath = path.join(root, "feat_demo", ".lock", "owner.json");
+    await fs.writeFile(ownerPath, JSON.stringify({ pid: 999999, startedAt: Date.now() - 31 * 60 * 1000 }), "utf-8");
+
+    const reacquired = await store.acquireLock("feat_demo");
+
+    expect(reacquired).toBe(true);
+  });
+
+  it("treats a lock with no owner.json (crash between mkdir and write) as stale", async () => {
+    await fs.mkdir(path.join(root, "feat_demo", ".lock"), { recursive: true });
+
+    const acquired = await store.acquireLock("feat_demo");
+
+    expect(acquired).toBe(true);
+  });
 });
