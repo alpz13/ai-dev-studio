@@ -131,25 +131,40 @@ async function surfacePipelineFailure(featureId: string, err: unknown): Promise<
   const message = err instanceof Error ? err.message : String(err);
   console.error(`[web] runDirector(${featureId}) failed:`, err);
 
-  const client = await connectFeatureStateClient();
+  // This runs off the end of a fire-and-forget chain (see startFeature above)
+  // whose only remaining step is lockStore.releaseLock in a .finally(). If
+  // anything below throws — e.g. the feature-state MCP subprocess fails to
+  // spawn — that rejection must not propagate, or it becomes an unhandled
+  // promise rejection that crashes the whole web server. So: never reject:
+  // catch and log any secondary failure instead of letting it surface.
   try {
-    const featureClient = client as unknown as FeatureStateToolsClient;
-    const existing = await getFeatureState(featureClient, featureId);
-    const currentStage: StageName = existing?.currentStage ?? "PM";
-    const stages = { [currentStage]: { status: "failed", notes: message } } as Partial<Record<StageName, StageInfo>>;
-    await updateFeatureState(featureClient, { featureId, status: "blocked", stages });
-  } finally {
-    await client.close();
-  }
+    const client = await connectFeatureStateClient();
+    try {
+      const featureClient = client as unknown as FeatureStateToolsClient;
+      const existing = await getFeatureState(featureClient, featureId);
+      const currentStage: StageName = existing?.currentStage ?? "PM";
+      const stages = { [currentStage]: { status: "failed", notes: message } } as Partial<
+        Record<StageName, StageInfo>
+      >;
+      await updateFeatureState(featureClient, { featureId, status: "blocked", stages });
+    } finally {
+      await client.close();
+    }
 
-  const logger = new TraceLogger();
-  await logger.log({
-    traceId: featureId,
-    spanId: newSpanId("agt_director"),
-    agentRole: "Director",
-    event: "error",
-    note: message,
-  });
+    const logger = new TraceLogger();
+    await logger.log({
+      traceId: featureId,
+      spanId: newSpanId("agt_director"),
+      agentRole: "Director",
+      event: "error",
+      note: message,
+    });
+  } catch (secondaryErr) {
+    console.error(
+      `[web] surfacePipelineFailure(${featureId}) failed while surfacing original error "${message}":`,
+      secondaryErr,
+    );
+  }
 }
 
 async function handleStream(featureId: string, res: ServerResponse, req: IncomingMessage): Promise<void> {

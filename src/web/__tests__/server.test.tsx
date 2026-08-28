@@ -321,4 +321,41 @@ describe("web/server", () => {
     const trace = await logger.readTrace("feat_will-fail");
     expect(trace.some((e) => e.event === "error" && e.note === "Dev agent crashed")).toBe(true);
   });
+
+  it("a secondary failure while surfacing a runDirector failure is logged, not thrown", async () => {
+    runDirectorMock.mockImplementationOnce(async () => {
+      throw new Error("Dev agent crashed");
+    });
+    updateFeatureStateMock.mockImplementationOnce(async () => {
+      throw new Error("feature-state MCP subprocess failed to spawn");
+    });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => unhandledRejections.push(reason);
+    process.on("unhandledRejection", onUnhandledRejection);
+
+    try {
+      const res = await authedFetch(`${baseUrl}/api/features`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ featureId: "feat_double-fail" }),
+      });
+      expect(res.status).toBe(202);
+
+      // Both the primary (runDirector) and secondary (updateFeatureState)
+      // failures are handled asynchronously — give the microtask/timer
+      // queue a turn before asserting nothing escaped as an unhandled rejection.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(unhandledRejections).toEqual([]);
+      expect(
+        consoleErrorSpy.mock.calls.some(
+          (call) => typeof call[0] === "string" && call[0].includes("surfacePipelineFailure"),
+        ),
+      ).toBe(true);
+    } finally {
+      process.off("unhandledRejection", onUnhandledRejection);
+      consoleErrorSpy.mockRestore();
+    }
+  });
 });
