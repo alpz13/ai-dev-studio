@@ -20,6 +20,7 @@
  *   GET  /api/features/:featureId/summary  Phase 6: stage durations, tokens used, QA retries, resume history
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +39,20 @@ const STATIC_MIME: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
 };
+
+function isAuthorized(req: IncomingMessage, url: URL): boolean {
+  const expected = process.env.AUTH_TOKEN;
+  if (!expected) return false;
+
+  const header = req.headers.authorization;
+  const provided = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : url.searchParams.get("token");
+  if (!provided) return false;
+
+  const providedBuf = Buffer.from(provided);
+  const expectedBuf = Buffer.from(expected);
+  if (providedBuf.length !== expectedBuf.length) return false;
+  return timingSafeEqual(providedBuf, expectedBuf);
+}
 
 async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -149,11 +164,20 @@ export interface WebServerOptions {
 }
 
 export function createWebServer(_opts: WebServerOptions = {}): Server {
+  if (!process.env.AUTH_TOKEN) {
+    throw new Error("AUTH_TOKEN must be set — refusing to start the web server without authentication.");
+  }
+
   return createServer((req, res) => {
     void (async () => {
       try {
         const url = new URL(req.url ?? "/", "http://localhost");
         const { pathname } = url;
+
+        if (!isAuthorized(req, url)) {
+          sendJson(res, 401, { error: "unauthorized" });
+          return;
+        }
 
         if (req.method === "GET" && pathname === "/") {
           const html = await readFile(INDEX_HTML_PATH, "utf-8");

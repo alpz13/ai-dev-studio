@@ -28,6 +28,12 @@ vi.mock("../../agents/shared/feature-state-client.js", () => ({
 const { createWebServer } = await import("../server.js");
 const { TraceLogger } = await import("../../observability/trace-logger.js");
 
+const AUTH_TOKEN = "test-token";
+
+function authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(url, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${AUTH_TOKEN}` } });
+}
+
 async function readSseEvents(response: Response, count: number, signal: AbortSignal): Promise<any[]> {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
@@ -50,12 +56,16 @@ async function readSseEvents(response: Response, count: number, signal: AbortSig
 
 describe("web/server", () => {
   let logsDir: string;
+  let featuresDir: string;
   let server: ReturnType<typeof createWebServer>;
   let baseUrl: string;
 
   beforeEach(async () => {
     logsDir = await fs.mkdtemp(path.join(os.tmpdir(), "ai-dev-studio-web-test-"));
     process.env.LOGS_DIR = logsDir;
+    featuresDir = await fs.mkdtemp(path.join(os.tmpdir(), "ai-dev-studio-features-test-"));
+    process.env.FEATURES_DIR = featuresDir;
+    process.env.AUTH_TOKEN = AUTH_TOKEN;
 
     runDirectorMock.mockClear();
     connectFeatureStateClientMock.mockClear();
@@ -71,11 +81,29 @@ describe("web/server", () => {
   afterEach(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await fs.rm(logsDir, { recursive: true, force: true });
+    await fs.rm(featuresDir, { recursive: true, force: true });
     delete process.env.LOGS_DIR;
+    delete process.env.FEATURES_DIR;
+    delete process.env.AUTH_TOKEN;
+  });
+
+  it("createWebServer throws if AUTH_TOKEN is not set", () => {
+    delete process.env.AUTH_TOKEN;
+    expect(() => createWebServer()).toThrow(/AUTH_TOKEN/);
+  });
+
+  it("a request without a token is rejected with 401", async () => {
+    const res = await fetch(`${baseUrl}/api/features`);
+    expect(res.status).toBe(401);
+  });
+
+  it("a request with the wrong token is rejected with 401", async () => {
+    const res = await fetch(`${baseUrl}/api/features`, { headers: { Authorization: "Bearer wrong-token" } });
+    expect(res.status).toBe(401);
   });
 
   it("GET / serves the single-page UI", async () => {
-    const res = await fetch(`${baseUrl}/`);
+    const res = await authedFetch(`${baseUrl}/`);
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/text\/html/);
@@ -89,7 +117,7 @@ describe("web/server", () => {
       { featureId: "feat_x", title: "X", status: "blocked", currentStage: "QA", stages: {}, updatedAt: "now" },
     ]);
 
-    const res = await fetch(`${baseUrl}/api/features`);
+    const res = await authedFetch(`${baseUrl}/api/features`);
     const body = await res.json() as { features: Array<{ featureId: string }> };
 
     expect(res.status).toBe(200);
@@ -100,7 +128,7 @@ describe("web/server", () => {
   });
 
   it("POST /api/features with a task generates a featureId, starts runDirector, and returns immediately", async () => {
-    const res = await fetch(`${baseUrl}/api/features`, {
+    const res = await authedFetch(`${baseUrl}/api/features`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ task: "Add a CSV export endpoint" }),
@@ -114,7 +142,7 @@ describe("web/server", () => {
   });
 
   it("POST /api/features with a featureId resumes it without generating a new one", async () => {
-    const res = await fetch(`${baseUrl}/api/features`, {
+    const res = await authedFetch(`${baseUrl}/api/features`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ featureId: "feat_2026-08-24_resume-me" }),
@@ -127,7 +155,7 @@ describe("web/server", () => {
   });
 
   it("POST /api/features with neither task nor featureId rejects with 400 and never calls runDirector", async () => {
-    const res = await fetch(`${baseUrl}/api/features`, {
+    const res = await authedFetch(`${baseUrl}/api/features`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -143,7 +171,7 @@ describe("web/server", () => {
     await logger.log({ traceId: featureId, spanId: "agt_director_1", agentRole: "Director", event: "agent_start" });
 
     const controller = new AbortController();
-    const res = await fetch(`${baseUrl}/api/features/${featureId}/stream`, { signal: controller.signal });
+    const res = await authedFetch(`${baseUrl}/api/features/${featureId}/stream`, { signal: controller.signal });
     expect(res.headers.get("content-type")).toMatch(/text\/event-stream/);
 
     // First event comes from history (written before we ever connected).
@@ -155,15 +183,26 @@ describe("web/server", () => {
     // stream is open, must arrive over the live traceEvents channel.
     await logger.log({ traceId: featureId, spanId: "agt_pm_1", agentRole: "PM", event: "agent_end", output: "specs ready" });
 
-    const res2 = await fetch(`${baseUrl}/api/features/${featureId}/stream`, { signal: controller.signal });
+    const res2 = await authedFetch(`${baseUrl}/api/features/${featureId}/stream`, { signal: controller.signal });
     const both = await readSseEvents(res2, 2, controller.signal);
     expect(both.map((e) => e.event)).toEqual(["agent_start", "agent_end"]);
 
     controller.abort();
   });
 
+  it("GET /api/features/:id/stream accepts the token as a ?token= query param, for EventSource clients", async () => {
+    const featureId = "feat_2026-08-25_query-token-test";
+    const controller = new AbortController();
+
+    const res = await fetch(`${baseUrl}/api/features/${featureId}/stream?token=${AUTH_TOKEN}`, { signal: controller.signal });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/text\/event-stream/);
+    controller.abort();
+  });
+
   it("GET /api/features/:id/summary returns 404 when no trace exists for that feature", async () => {
-    const res = await fetch(`${baseUrl}/api/features/feat_does_not_exist/summary`);
+    const res = await authedFetch(`${baseUrl}/api/features/feat_does_not_exist/summary`);
 
     expect(res.status).toBe(404);
   });
@@ -176,7 +215,7 @@ describe("web/server", () => {
     await logger.log({ traceId: featureId, spanId: "agt_pm_1", agentRole: "PM", event: "agent_end", tokensUsed: 120 });
     await logger.log({ traceId: featureId, spanId: "agt_director_1", agentRole: "Director", event: "agent_end", output: "Pipeline complete." });
 
-    const res = await fetch(`${baseUrl}/api/features/${featureId}/summary`);
+    const res = await authedFetch(`${baseUrl}/api/features/${featureId}/summary`);
     const body = await res.json() as { featureId: string; outcome: string; totalTokensUsed: number; stages: Array<{ stage: string; tokensUsed: number }> };
 
     expect(res.status).toBe(200);
@@ -191,7 +230,7 @@ describe("web/server", () => {
     const featureId = "feat_2026-08-24_cleanup-test";
 
     const controller = new AbortController();
-    const res = await fetch(`${baseUrl}/api/features/${featureId}/stream`, { signal: controller.signal });
+    const res = await authedFetch(`${baseUrl}/api/features/${featureId}/stream`, { signal: controller.signal });
     // res.flushHeaders() in the server sends headers synchronously before any await,
     // so the listener is already registered by the time fetch() resolves — no read needed.
     const reader = res.body!.getReader();
