@@ -26,7 +26,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runDirector } from "../agents/director/director.js";
 import { connectFeatureStateClient, listPendingFeatures, type FeatureStateToolsClient } from "../agents/shared/feature-state-client.js";
-import { generateFeatureId } from "../agents/director/slugify.js";
+import { generateFeatureId, isValidFeatureId } from "../agents/director/slugify.js";
 import { traceEvents, TraceLogger, type TraceEvent } from "../observability/trace-logger.js";
 import { summarizeTrace } from "../observability/trace-summary.js";
 
@@ -97,6 +97,11 @@ async function handleStartOrResume(req: IncomingMessage, res: ServerResponse): P
   }
 
   const resolvedFeatureId = featureId ?? generateFeatureId(task!);
+
+  if (!isValidFeatureId(resolvedFeatureId)) {
+    sendJson(res, 400, { error: `Invalid featureId "${resolvedFeatureId}".` });
+    return;
+  }
 
   // Fire and forget: a full pipeline run makes several real Messages API
   // calls and can take a while. The caller gets the featureId back right
@@ -215,13 +220,23 @@ export function createWebServer(_opts: WebServerOptions = {}): Server {
 
         const streamMatch = pathname.match(/^\/api\/features\/([^/]+)\/stream$/);
         if (req.method === "GET" && streamMatch) {
-          await handleStream(decodeURIComponent(streamMatch[1]), res, req);
+          const featureId = decodeURIComponent(streamMatch[1]);
+          if (!isValidFeatureId(featureId)) {
+            sendJson(res, 400, { error: `Invalid featureId "${featureId}".` });
+            return;
+          }
+          await handleStream(featureId, res, req);
           return;
         }
 
         const summaryMatch = pathname.match(/^\/api\/features\/([^/]+)\/summary$/);
         if (req.method === "GET" && summaryMatch) {
-          await handleSummary(decodeURIComponent(summaryMatch[1]), res);
+          const featureId = decodeURIComponent(summaryMatch[1]);
+          if (!isValidFeatureId(featureId)) {
+            sendJson(res, 400, { error: `Invalid featureId "${featureId}".` });
+            return;
+          }
+          await handleSummary(featureId, res);
           return;
         }
 

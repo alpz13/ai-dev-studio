@@ -243,4 +243,25 @@ describe("web/server", () => {
 
     expect(traceEvents.listenerCount(featureId)).toBe(0);
   });
+
+  it("POST /api/features with an invalid featureId rejects with 400", async () => {
+    const res = await authedFetch(`${baseUrl}/api/features`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ featureId: "../../etc/passwd" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(runDirectorMock).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/features/:id/stream with an invalid featureId rejects with 400", async () => {
+    const res = await authedFetch(`${baseUrl}/api/features/${encodeURIComponent("../../etc/passwd")}/stream`);
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /api/features/:id/summary with an invalid featureId rejects with 400", async () => {
+    const res = await authedFetch(`${baseUrl}/api/features/${encodeURIComponent("../../etc/passwd")}/summary`);
+    expect(res.status).toBe(400);
+  });
 });
