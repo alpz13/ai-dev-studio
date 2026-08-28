@@ -116,14 +116,23 @@ describe("web/server", () => {
     expect(res.status).toBe(401);
   });
 
-  it("GET / serves the single-page UI", async () => {
-    const res = await authedFetch(`${baseUrl}/`);
+  // The SPA shell is intentionally unauthenticated: the browser must be able
+  // to load the page and app.js before it can prompt for a token at all.
+  it("GET / serves the single-page UI without a token", async () => {
+    const res = await fetch(`${baseUrl}/`);
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/text\/html/);
     const body = await res.text();
     expect(body).toMatch(/AI Dev Studio/);
     expect(body).toMatch(/app\.js/);
+  });
+
+  it("GET /app.js serves the static asset without a token", async () => {
+    const res = await fetch(`${baseUrl}/app.js`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/javascript/);
   });
 
   it("GET /api/features returns the pending features from the Feature State MCP client", async () => {

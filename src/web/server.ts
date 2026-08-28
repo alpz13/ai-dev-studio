@@ -248,12 +248,11 @@ export function createWebServer(_opts: WebServerOptions = {}): Server {
           return;
         }
 
-        const isStreamRoute = /^\/api\/features\/[^/]+\/stream$/.test(pathname);
-        if (!isAuthorized(req, url, isStreamRoute)) {
-          sendJson(res, 401, { error: "unauthorized" });
-          return;
-        }
-
+        // The SPA shell (HTML/CSS/JS) is served unauthenticated, like
+        // /healthz above: it carries no feature data or secrets, and the
+        // browser has to be able to load app.js before it can prompt for a
+        // token at all. Everything under /api/ — the only thing that touches
+        // pipeline state — stays behind the auth gate below.
         if (req.method === "GET" && pathname === "/") {
           const html = await readFile(INDEX_HTML_PATH, "utf-8");
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -276,6 +275,12 @@ export function createWebServer(_opts: WebServerOptions = {}): Server {
             }
             return;
           }
+        }
+
+        const isStreamRoute = /^\/api\/features\/[^/]+\/stream$/.test(pathname);
+        if (!isAuthorized(req, url, isStreamRoute)) {
+          sendJson(res, 401, { error: "unauthorized" });
+          return;
         }
 
         if (req.method === "GET" && pathname === "/api/features") {
