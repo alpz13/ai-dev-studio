@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateFeatureId, slugify } from "../../../agents/director/slugify.js";
+import { generateFeatureId, isValidFeatureId, slugify } from "../../../agents/director/slugify.js";
 
 describe("agents/director/slugify: slugify", () => {
   it("lowercases and replaces spaces with hyphens", () => {
@@ -44,5 +44,32 @@ describe("agents/director/slugify: generateFeatureId", () => {
     const a = generateFeatureId("Export to CSV", now);
     const b = generateFeatureId("Import from CSV", now);
     expect(a).not.toBe(b);
+  });
+});
+
+describe("agents/director/slugify: isValidFeatureId", () => {
+  it("accepts a normally generated featureId", () => {
+    expect(isValidFeatureId("feat_2026-08-24_export-to-csv")).toBe(true);
+  });
+
+  it("rejects path traversal attempts", () => {
+    expect(isValidFeatureId("../../etc/passwd")).toBe(false);
+  });
+
+  it("rejects an empty string", () => {
+    expect(isValidFeatureId("")).toBe(false);
+  });
+
+  it("rejects a value starting with a hyphen or underscore", () => {
+    expect(isValidFeatureId("-feat_x")).toBe(false);
+    expect(isValidFeatureId("_feat_x")).toBe(false);
+  });
+
+  it("rejects uppercase letters", () => {
+    expect(isValidFeatureId("Feat_X")).toBe(false);
+  });
+
+  it("rejects a slash", () => {
+    expect(isValidFeatureId("feat/x")).toBe(false);
   });
 });

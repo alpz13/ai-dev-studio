@@ -23,3 +23,14 @@ export function generateFeatureId(task: string, now: Date = new Date()): string 
   const slug = slugify(task) || "feature";
   return `feat_${date}_${slug}`;
 }
+
+const FEATURE_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/;
+
+/**
+ * Guards against path traversal: featureId is used to build filesystem
+ * paths in FeatureStateStore and TraceLogger, so anything outside this
+ * slug shape must be rejected before it reaches a path.join() call.
+ */
+export function isValidFeatureId(featureId: string): boolean {
+  return FEATURE_ID_PATTERN.test(featureId);
+}
