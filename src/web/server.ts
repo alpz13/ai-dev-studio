@@ -25,10 +25,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runDirector } from "../agents/director/director.js";
-import { connectFeatureStateClient, listPendingFeatures, type FeatureStateToolsClient } from "../agents/shared/feature-state-client.js";
+import { connectFeatureStateClient, listPendingFeatures, getFeatureState, updateFeatureState, type FeatureStateToolsClient } from "../agents/shared/feature-state-client.js";
 import { generateFeatureId, isValidFeatureId } from "../agents/director/slugify.js";
-import { traceEvents, TraceLogger, type TraceEvent } from "../observability/trace-logger.js";
+import { traceEvents, TraceLogger, newSpanId, type TraceEvent } from "../observability/trace-logger.js";
 import { summarizeTrace } from "../observability/trace-summary.js";
+import { FeatureStateStore, type StageName, type StageInfo } from "../feature-state/store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -103,16 +104,52 @@ async function handleStartOrResume(req: IncomingMessage, res: ServerResponse): P
     return;
   }
 
+  // A duplicate start/resume request for a feature that's already running
+  // races two Director runs against the same state.json. The lock is a
+  // web-server-level concern (rejecting a duplicate HTTP request), not a
+  // pipeline concern, so it lives here rather than in director.ts.
+  const lockStore = new FeatureStateStore();
+  const acquired = await lockStore.acquireLock(resolvedFeatureId);
+  if (!acquired) {
+    sendJson(res, 409, { error: `Feature "${resolvedFeatureId}" is already running.` });
+    return;
+  }
+
   // Fire and forget: a full pipeline run makes several real Messages API
   // calls and can take a while. The caller gets the featureId back right
   // away and watches progress over the SSE stream below — runDirector
   // already persists every step to Feature State + the trace log itself,
   // so a closed browser tab never loses work, it just stops watching it.
-  runDirector({ featureId: resolvedFeatureId, task }).catch((err) => {
-    console.error(`[web] runDirector(${resolvedFeatureId}) failed:`, err);
-  });
+  runDirector({ featureId: resolvedFeatureId, task })
+    .catch((err) => surfacePipelineFailure(resolvedFeatureId, err))
+    .finally(() => void lockStore.releaseLock(resolvedFeatureId));
 
   sendJson(res, 202, { featureId: resolvedFeatureId });
+}
+
+async function surfacePipelineFailure(featureId: string, err: unknown): Promise<void> {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`[web] runDirector(${featureId}) failed:`, err);
+
+  const client = await connectFeatureStateClient();
+  try {
+    const featureClient = client as unknown as FeatureStateToolsClient;
+    const existing = await getFeatureState(featureClient, featureId);
+    const currentStage: StageName = existing?.currentStage ?? "PM";
+    const stages = { [currentStage]: { status: "failed", notes: message } } as Partial<Record<StageName, StageInfo>>;
+    await updateFeatureState(featureClient, { featureId, status: "blocked", stages });
+  } finally {
+    await client.close();
+  }
+
+  const logger = new TraceLogger();
+  await logger.log({
+    traceId: featureId,
+    spanId: newSpanId("agt_director"),
+    agentRole: "Director",
+    event: "error",
+    note: message,
+  });
 }
 
 async function handleStream(featureId: string, res: ServerResponse, req: IncomingMessage): Promise<void> {

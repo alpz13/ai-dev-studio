@@ -19,10 +19,14 @@ vi.mock("../../agents/director/director.js", () => ({ runDirector: runDirectorMo
 const closeMock = vi.fn(async () => {});
 const listPendingFeaturesMock = vi.fn(async () => [] as unknown[]);
 const connectFeatureStateClientMock = vi.fn(async () => ({ close: closeMock }));
+const getFeatureStateMock = vi.fn(async () => null as unknown);
+const updateFeatureStateMock = vi.fn(async (_client: unknown, input: unknown) => input);
 
 vi.mock("../../agents/shared/feature-state-client.js", () => ({
   connectFeatureStateClient: connectFeatureStateClientMock,
   listPendingFeatures: listPendingFeaturesMock,
+  getFeatureState: getFeatureStateMock,
+  updateFeatureState: updateFeatureStateMock,
 }));
 
 const { createWebServer } = await import("../server.js");
@@ -70,6 +74,8 @@ describe("web/server", () => {
     runDirectorMock.mockClear();
     connectFeatureStateClientMock.mockClear();
     listPendingFeaturesMock.mockClear();
+    getFeatureStateMock.mockClear();
+    updateFeatureStateMock.mockClear();
     closeMock.mockClear();
 
     server = createWebServer();
@@ -263,5 +269,56 @@ describe("web/server", () => {
   it("GET /api/features/:id/summary with an invalid featureId rejects with 400", async () => {
     const res = await authedFetch(`${baseUrl}/api/features/${encodeURIComponent("../../etc/passwd")}/summary`);
     expect(res.status).toBe(400);
+  });
+
+  it("POST /api/features rejects a duplicate start for a feature already running with 409", async () => {
+    let resolveRun!: () => void;
+    runDirectorMock.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveRun = () => resolve({ featureId: "feat_locked", finalState: {} as any });
+      }),
+    );
+
+    const first = await authedFetch(`${baseUrl}/api/features`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ featureId: "feat_locked" }),
+    });
+    expect(first.status).toBe(202);
+
+    const second = await authedFetch(`${baseUrl}/api/features`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ featureId: "feat_locked" }),
+    });
+    expect(second.status).toBe(409);
+
+    resolveRun();
+  });
+
+  it("a runDirector failure marks the feature blocked and logs a trace error event", async () => {
+    runDirectorMock.mockImplementationOnce(async () => {
+      throw new Error("Dev agent crashed");
+    });
+
+    const res = await authedFetch(`${baseUrl}/api/features`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ featureId: "feat_will-fail" }),
+    });
+    expect(res.status).toBe(202);
+
+    // runDirector's rejection is handled asynchronously (fire-and-forget) —
+    // give the microtask/timer queue a turn before asserting on its side effects.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(updateFeatureStateMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ featureId: "feat_will-fail", status: "blocked" }),
+    );
+
+    const logger = new TraceLogger(logsDir);
+    const trace = await logger.readTrace("feat_will-fail");
+    expect(trace.some((e) => e.event === "error" && e.note === "Dev agent crashed")).toBe(true);
   });
 });
