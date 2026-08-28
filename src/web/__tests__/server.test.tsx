@@ -271,6 +271,14 @@ describe("web/server", () => {
     expect(res.status).toBe(400);
   });
 
+  it("GET /healthz returns 200 without requiring a token", async () => {
+    const res = await fetch(`${baseUrl}/healthz`);
+    const body = await res.json() as { status: string };
+
+    expect(res.status).toBe(200);
+    expect(body.status).toBe("ok");
+  });
+
   it("POST /api/features rejects a duplicate start for a feature already running with 409", async () => {
     let resolveRun!: () => void;
     runDirectorMock.mockImplementationOnce(

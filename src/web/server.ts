@@ -231,6 +231,11 @@ export function createWebServer(_opts: WebServerOptions = {}): Server {
         const url = new URL(req.url ?? "/", "http://localhost");
         const { pathname } = url;
 
+        if (req.method === "GET" && pathname === "/healthz") {
+          sendJson(res, 200, { status: "ok" });
+          return;
+        }
+
         if (!isAuthorized(req, url)) {
           sendJson(res, 401, { error: "unauthorized" });
           return;
@@ -305,6 +310,16 @@ export function createWebServer(_opts: WebServerOptions = {}): Server {
 export function startWebServer(opts: WebServerOptions = {}): Promise<{ server: Server; port: number }> {
   const server = createWebServer(opts);
   const port = opts.port ?? Number(process.env.WEB_PORT ?? 3000);
+
+  const shutdown = () => {
+    console.error("[web] shutting down...");
+    server.close(() => process.exit(0));
+    // Force-exit if in-flight SSE connections haven't drained in time.
+    setTimeout(() => process.exit(0), 5000).unref();
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+
   return new Promise((resolve) => {
     server.listen(port, () => resolve({ server, port }));
   });
