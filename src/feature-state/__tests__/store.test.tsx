@@ -196,19 +196,51 @@ describe("FeatureStateStore: locking", () => {
 
   it("reclaims a stale lock (older than LOCK_STALE_MS) instead of blocking forever", async () => {
     await store.acquireLock("feat_demo");
-    const ownerPath = path.join(root, "feat_demo", ".lock", "owner.json");
-    await fs.writeFile(ownerPath, JSON.stringify({ pid: 999999, startedAt: Date.now() - 31 * 60 * 1000 }), "utf-8");
+    const lockDir = path.join(root, "feat_demo", ".lock");
+    const oldTime = new Date(Date.now() - 31 * 60 * 1000);
+    await fs.utimes(lockDir, oldTime, oldTime);
 
     const reacquired = await store.acquireLock("feat_demo");
 
     expect(reacquired).toBe(true);
   });
 
-  it("treats a lock with no owner.json (crash between mkdir and write) as stale", async () => {
+  it("a freshly created lock is never treated as stale, even before owner.json exists", async () => {
     await fs.mkdir(path.join(root, "feat_demo", ".lock"), { recursive: true });
 
     const acquired = await store.acquireLock("feat_demo");
 
+    expect(acquired).toBe(false);
+  });
+
+  it("an old lock dir with no owner.json (e.g. an older lock format) is still reclaimed as stale", async () => {
+    const lockDir = path.join(root, "feat_demo", ".lock");
+    await fs.mkdir(lockDir, { recursive: true });
+    const oldTime = new Date(Date.now() - 31 * 60 * 1000);
+    await fs.utimes(lockDir, oldTime, oldTime);
+
+    const acquired = await store.acquireLock("feat_demo");
+
     expect(acquired).toBe(true);
+  });
+
+  it("only one of many concurrent acquireLock calls for a fresh lock succeeds (regression: was 110/200 double-acquires)", async () => {
+    for (let i = 0; i < 50; i++) {
+      const featureId = `feat_race_${i}`;
+      const results = await Promise.all([store.acquireLock(featureId), store.acquireLock(featureId)]);
+      const winners = results.filter(Boolean).length;
+      expect(winners).toBe(1);
+    }
+  });
+
+  it("only one of two concurrent acquireLock calls reclaiming the same stale lock succeeds", async () => {
+    await store.acquireLock("feat_stale");
+    const lockDir = path.join(root, "feat_stale", ".lock");
+    const oldTime = new Date(Date.now() - 31 * 60 * 1000);
+    await fs.utimes(lockDir, oldTime, oldTime);
+
+    const results = await Promise.all([store.acquireLock("feat_stale"), store.acquireLock("feat_stale")]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
   });
 });

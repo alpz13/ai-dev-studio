@@ -95,13 +95,12 @@ export class FeatureStateStore {
 
   private async isLockStale(featureId: string): Promise<boolean> {
     try {
-      const raw = await fs.readFile(this.ownerPath(featureId), "utf-8");
-      const { startedAt } = JSON.parse(raw) as { startedAt: number };
-      return Date.now() - startedAt > LOCK_STALE_MS;
+      const stat = await fs.stat(this.lockPath(featureId));
+      return Date.now() - stat.mtimeMs > LOCK_STALE_MS;
     } catch {
-      // No readable owner record (an older lock format, or a crash between
-      // mkdir and writing owner.json): treat it as orphaned rather than
-      // block forever.
+      // Lock directory vanished between our EEXIST and this stat (released
+      // concurrently by its owner) — nothing to reclaim; the mkdir retry
+      // below will succeed normally.
       return true;
     }
   }
@@ -109,10 +108,21 @@ export class FeatureStateStore {
   /**
    * Atomic mutex via mkdir, which fails with EEXIST if the directory
    * already exists — no locking library needed. Returns false if another
-   * run already holds the lock for this featureId. A lock older than
-   * LOCK_STALE_MS is treated as abandoned (the holder crashed or was
+   * run already holds the lock for this featureId. A lock directory older
+   * than LOCK_STALE_MS is treated as abandoned (the holder crashed or was
    * killed without releasing it) and reclaimed automatically, so a
    * container restart never permanently blocks a feature.
+   *
+   * Staleness is judged by the lock directory's own mtime (set atomically
+   * by mkdir), not by reading owner.json — a lock is briefly EEXIST-losable
+   * by a second caller before its owner finishes writing owner.json, and
+   * judging staleness from that file's presence/content would misjudge a
+   * lock that is merely a few milliseconds old as abandoned.
+   *
+   * Reclaiming a stale lock uses fs.rename as the atomic claim step: if two
+   * callers race to reclaim the same stale lock, only one rename succeeds —
+   * the loser gets ENOENT and backs off (returns false) instead of forcing
+   * through, so the mutex holds even during reclaim.
    */
   async acquireLock(featureId: string): Promise<boolean> {
     await fs.mkdir(path.join(this.featuresDir, featureId), { recursive: true });
@@ -121,7 +131,18 @@ export class FeatureStateStore {
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
       if (!(await this.isLockStale(featureId))) return false;
-      await this.releaseLock(featureId);
+
+      const claimPath = `${this.lockPath(featureId)}.stale-${process.pid}-${Date.now()}`;
+      try {
+        await fs.rename(this.lockPath(featureId), claimPath);
+      } catch (renameErr) {
+        if ((renameErr as NodeJS.ErrnoException).code === "ENOENT") return false;
+        throw renameErr;
+      }
+      await fs.rm(claimPath, { recursive: true, force: true }).catch((cleanupErr) => {
+        console.error(`[feature-state] failed to clean up reclaimed stale lock at ${claimPath}:`, cleanupErr);
+      });
+
       try {
         await fs.mkdir(this.lockPath(featureId));
       } catch (retryErr) {
