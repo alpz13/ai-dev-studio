@@ -41,12 +41,20 @@ const STATIC_MIME: Record<string, string> = {
   ".js": "application/javascript; charset=utf-8",
 };
 
-function isAuthorized(req: IncomingMessage, url: URL): boolean {
+/**
+ * `allowQueryToken` is only true for the SSE stream route: `EventSource`
+ * can't set an Authorization header, so that one route accepts `?token=`.
+ * Every other route requires the header, so tokens don't leak into access
+ * logs / browser history for ordinary requests.
+ */
+function isAuthorized(req: IncomingMessage, url: URL, allowQueryToken: boolean): boolean {
   const expected = process.env.AUTH_TOKEN;
   if (!expected) return false;
 
   const header = req.headers.authorization;
-  const provided = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : url.searchParams.get("token");
+  const provided = header?.startsWith("Bearer ")
+    ? header.slice("Bearer ".length)
+    : (allowQueryToken ? url.searchParams.get("token") : null);
   if (!provided) return false;
 
   const providedBuf = Buffer.from(provided);
@@ -122,7 +130,11 @@ async function handleStartOrResume(req: IncomingMessage, res: ServerResponse): P
   // so a closed browser tab never loses work, it just stops watching it.
   runDirector({ featureId: resolvedFeatureId, task })
     .catch((err) => surfacePipelineFailure(resolvedFeatureId, err))
-    .finally(() => void lockStore.releaseLock(resolvedFeatureId));
+    .finally(() => {
+      lockStore.releaseLock(resolvedFeatureId).catch((err) => {
+        console.error(`[web] releaseLock(${resolvedFeatureId}) failed:`, err);
+      });
+    });
 
   sendJson(res, 202, { featureId: resolvedFeatureId });
 }
@@ -236,7 +248,8 @@ export function createWebServer(_opts: WebServerOptions = {}): Server {
           return;
         }
 
-        if (!isAuthorized(req, url)) {
+        const isStreamRoute = /^\/api\/features\/[^/]+\/stream$/.test(pathname);
+        if (!isAuthorized(req, url, isStreamRoute)) {
           sendJson(res, 401, { error: "unauthorized" });
           return;
         }

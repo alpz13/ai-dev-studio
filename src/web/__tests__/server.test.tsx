@@ -108,6 +108,14 @@ describe("web/server", () => {
     expect(res.status).toBe(401);
   });
 
+  // The ?token= fallback exists only because EventSource can't set headers;
+  // accepting it everywhere would leak the token into access logs and
+  // browser history for ordinary requests.
+  it("a non-stream route with only a ?token= query param (no header) is rejected with 401", async () => {
+    const res = await fetch(`${baseUrl}/api/features?token=${AUTH_TOKEN}`);
+    expect(res.status).toBe(401);
+  });
+
   it("GET / serves the single-page UI", async () => {
     const res = await authedFetch(`${baseUrl}/`);
 
