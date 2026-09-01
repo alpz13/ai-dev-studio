@@ -4,13 +4,13 @@
  * Usage: tsx scripts/test-agent-loop-helpers.ts
  */
 import assert from "node:assert/strict";
-import { mcpToolsToAnthropicTools } from "../src/agents/shared/mcp-tool-adapter.js";
+import { mcpToolsToAnthropicTools } from "../../src/agents/shared/mcp-tool-adapter.js";
 import {
   buildToolResultBlock,
   extractText,
   extractToolUseBlocks,
   type ContentBlock,
-} from "../src/agents/shared/agent-loop-helpers.js";
+} from "../../src/agents/shared/agent-loop-helpers.js";
 
 async function main() {
   // 1. Tool adapter: name/description/schema map 1:1, and a tool with no

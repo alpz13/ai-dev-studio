@@ -20,17 +20,48 @@
  *   GET  /api/features/:featureId/summary  Phase 6: stage durations, tokens used, QA retries, resume history
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runDirector } from "../agents/director/director.js";
-import { connectFeatureStateClient, listPendingFeatures, type FeatureStateToolsClient } from "../agents/shared/feature-state-client.js";
-import { generateFeatureId } from "../agents/director/slugify.js";
-import { traceEvents, TraceLogger, type TraceEvent } from "../observability/trace-logger.js";
+import { connectFeatureStateClient, listPendingFeatures, getFeatureState, updateFeatureState, type FeatureStateToolsClient } from "../agents/shared/feature-state-client.js";
+import { generateFeatureId, isValidFeatureId } from "../agents/director/slugify.js";
+import { traceEvents, TraceLogger, newSpanId, type TraceEvent } from "../observability/trace-logger.js";
 import { summarizeTrace } from "../observability/trace-summary.js";
+import { FeatureStateStore, type StageName, type StageInfo } from "../feature-state/store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const INDEX_HTML_PATH = path.join(__dirname, "public", "index.html");
+const PUBLIC_DIR = path.join(__dirname, "public");
+const INDEX_HTML_PATH = path.join(PUBLIC_DIR, "index.html");
+
+const STATIC_MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+};
+
+/**
+ * `allowQueryToken` is only true for the SSE stream route: `EventSource`
+ * can't set an Authorization header, so that one route accepts `?token=`.
+ * Every other route requires the header, so tokens don't leak into access
+ * logs / browser history for ordinary requests.
+ */
+function isAuthorized(req: IncomingMessage, url: URL, allowQueryToken: boolean): boolean {
+  const expected = process.env.AUTH_TOKEN;
+  if (!expected) return false;
+
+  const header = req.headers.authorization;
+  const provided = header?.startsWith("Bearer ")
+    ? header.slice("Bearer ".length)
+    : (allowQueryToken ? url.searchParams.get("token") : null);
+  if (!provided) return false;
+
+  const providedBuf = Buffer.from(provided);
+  const expectedBuf = Buffer.from(expected);
+  if (providedBuf.length !== expectedBuf.length) return false;
+  return timingSafeEqual(providedBuf, expectedBuf);
+}
 
 async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -76,16 +107,76 @@ async function handleStartOrResume(req: IncomingMessage, res: ServerResponse): P
 
   const resolvedFeatureId = featureId ?? generateFeatureId(task!);
 
+  if (!isValidFeatureId(resolvedFeatureId)) {
+    sendJson(res, 400, { error: `Invalid featureId "${resolvedFeatureId}".` });
+    return;
+  }
+
+  // A duplicate start/resume request for a feature that's already running
+  // races two Director runs against the same state.json. The lock is a
+  // web-server-level concern (rejecting a duplicate HTTP request), not a
+  // pipeline concern, so it lives here rather than in director.ts.
+  const lockStore = new FeatureStateStore();
+  const acquired = await lockStore.acquireLock(resolvedFeatureId);
+  if (!acquired) {
+    sendJson(res, 409, { error: `Feature "${resolvedFeatureId}" is already running.` });
+    return;
+  }
+
   // Fire and forget: a full pipeline run makes several real Messages API
   // calls and can take a while. The caller gets the featureId back right
   // away and watches progress over the SSE stream below — runDirector
   // already persists every step to Feature State + the trace log itself,
   // so a closed browser tab never loses work, it just stops watching it.
-  runDirector({ featureId: resolvedFeatureId, task }).catch((err) => {
-    console.error(`[web] runDirector(${resolvedFeatureId}) failed:`, err);
-  });
+  runDirector({ featureId: resolvedFeatureId, task })
+    .catch((err) => surfacePipelineFailure(resolvedFeatureId, err))
+    .finally(() => {
+      lockStore.releaseLock(resolvedFeatureId).catch((err) => {
+        console.error(`[web] releaseLock(${resolvedFeatureId}) failed:`, err);
+      });
+    });
 
   sendJson(res, 202, { featureId: resolvedFeatureId });
+}
+
+async function surfacePipelineFailure(featureId: string, err: unknown): Promise<void> {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`[web] runDirector(${featureId}) failed:`, err);
+
+  // This runs off the end of a fire-and-forget chain (see startFeature above)
+  // whose only remaining step is lockStore.releaseLock in a .finally(). If
+  // anything below throws — e.g. the feature-state MCP subprocess fails to
+  // spawn — that rejection must not propagate, or it becomes an unhandled
+  // promise rejection that crashes the whole web server. So: never reject:
+  // catch and log any secondary failure instead of letting it surface.
+  try {
+    const client = await connectFeatureStateClient();
+    try {
+      const featureClient = client as unknown as FeatureStateToolsClient;
+      const existing = await getFeatureState(featureClient, featureId);
+      const currentStage: StageName = existing?.currentStage ?? "PM";
+      const stages = { [currentStage]: { status: "failed", notes: message } } as Partial<
+        Record<StageName, StageInfo>
+      >;
+      await updateFeatureState(featureClient, { featureId, status: "blocked", stages });
+    } finally {
+      await client.close();
+    }
+
+    const logger = new TraceLogger();
+    await logger.log({
+      traceId: featureId,
+      spanId: newSpanId("agt_director"),
+      agentRole: "Director",
+      event: "error",
+      note: message,
+    });
+  } catch (secondaryErr) {
+    console.error(
+      `[web] surfacePipelineFailure(${featureId}) failed while surfacing original error "${message}":`,
+      secondaryErr,
+    );
+  }
 }
 
 async function handleStream(featureId: string, res: ServerResponse, req: IncomingMessage): Promise<void> {
@@ -142,16 +233,53 @@ export interface WebServerOptions {
 }
 
 export function createWebServer(_opts: WebServerOptions = {}): Server {
+  if (!process.env.AUTH_TOKEN) {
+    throw new Error("AUTH_TOKEN must be set — refusing to start the web server without authentication.");
+  }
+
   return createServer((req, res) => {
     void (async () => {
       try {
         const url = new URL(req.url ?? "/", "http://localhost");
         const { pathname } = url;
 
+        if (req.method === "GET" && pathname === "/healthz") {
+          sendJson(res, 200, { status: "ok" });
+          return;
+        }
+
+        // The SPA shell (HTML/CSS/JS) is served unauthenticated, like
+        // /healthz above: it carries no feature data or secrets, and the
+        // browser has to be able to load app.js before it can prompt for a
+        // token at all. Everything under /api/ — the only thing that touches
+        // pipeline state — stays behind the auth gate below.
         if (req.method === "GET" && pathname === "/") {
           const html = await readFile(INDEX_HTML_PATH, "utf-8");
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
           res.end(html);
+          return;
+        }
+
+        // Serve static assets (style.css, app.js) from public/
+        if (req.method === "GET" && !pathname.startsWith("/api/")) {
+          const ext = path.extname(pathname);
+          const mime = STATIC_MIME[ext];
+          if (mime) {
+            const filePath = path.join(PUBLIC_DIR, path.basename(pathname));
+            try {
+              const content = await readFile(filePath, "utf-8");
+              res.writeHead(200, { "Content-Type": mime });
+              res.end(content);
+            } catch {
+              sendJson(res, 404, { error: "not found" });
+            }
+            return;
+          }
+        }
+
+        const isStreamRoute = /^\/api\/features\/[^/]+\/stream$/.test(pathname);
+        if (!isAuthorized(req, url, isStreamRoute)) {
+          sendJson(res, 401, { error: "unauthorized" });
           return;
         }
 
@@ -167,13 +295,23 @@ export function createWebServer(_opts: WebServerOptions = {}): Server {
 
         const streamMatch = pathname.match(/^\/api\/features\/([^/]+)\/stream$/);
         if (req.method === "GET" && streamMatch) {
-          await handleStream(decodeURIComponent(streamMatch[1]), res, req);
+          const featureId = decodeURIComponent(streamMatch[1]);
+          if (!isValidFeatureId(featureId)) {
+            sendJson(res, 400, { error: `Invalid featureId "${featureId}".` });
+            return;
+          }
+          await handleStream(featureId, res, req);
           return;
         }
 
         const summaryMatch = pathname.match(/^\/api\/features\/([^/]+)\/summary$/);
         if (req.method === "GET" && summaryMatch) {
-          await handleSummary(decodeURIComponent(summaryMatch[1]), res);
+          const featureId = decodeURIComponent(summaryMatch[1]);
+          if (!isValidFeatureId(featureId)) {
+            sendJson(res, 400, { error: `Invalid featureId "${featureId}".` });
+            return;
+          }
+          await handleSummary(featureId, res);
           return;
         }
 
@@ -190,6 +328,16 @@ export function createWebServer(_opts: WebServerOptions = {}): Server {
 export function startWebServer(opts: WebServerOptions = {}): Promise<{ server: Server; port: number }> {
   const server = createWebServer(opts);
   const port = opts.port ?? Number(process.env.WEB_PORT ?? 3000);
+
+  const shutdown = () => {
+    console.error("[web] shutting down...");
+    server.close(() => process.exit(0));
+    // Force-exit if in-flight SSE connections haven't drained in time.
+    setTimeout(() => process.exit(0), 5000).unref();
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+
   return new Promise((resolve) => {
     server.listen(port, () => resolve({ server, port }));
   });

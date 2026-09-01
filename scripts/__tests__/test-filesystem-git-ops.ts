@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ensureRoot, listDirEntries, readTextFile, resolveSafePath, writeTextFile } from "../src/filesystem-git/fs-ops.js";
-import { gitAdd, gitCommit, gitDiff, gitInitIfNeeded, gitStatus } from "../src/filesystem-git/git-ops.js";
+import { ensureRoot, listDirEntries, readTextFile, resolveSafePath, writeTextFile } from "../../src/filesystem-git/fs-ops.js";
+import { gitAdd, gitCommit, gitDiff, gitInitIfNeeded, gitStatus } from "../../src/filesystem-git/git-ops.js";
 
 async function main() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "ai-dev-studio-fsgit-test-"));

@@ -4,7 +4,7 @@
  *
  * Usage: npm run test:core
  */
-import { sendMessage, streamMessage } from "../src/core/client.js";
+import { sendMessage, streamMessage } from "../../src/core/client.js";
 
 async function main() {
   if (!process.env.ANTHROPIC_API_KEY) {

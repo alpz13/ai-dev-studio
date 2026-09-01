@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { newSpanId, TraceLogger } from "../src/observability/trace-logger.js";
+import { newSpanId, TraceLogger } from "../../src/observability/trace-logger.js";
 
 async function main() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ai-dev-studio-trace-test-"));

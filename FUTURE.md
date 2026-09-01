@@ -2,6 +2,16 @@
 
 > This document is NOT part of the Phase 0–6 roadmap in [ARCHITECTURE.md](./ARCHITECTURE.md) — it's a list of features to evaluate and plan once those phases are done. Nothing it describes is implemented yet; these are notes from a design conversation, so the reasoning behind why each point matters isn't lost.
 
+## 0. Making the pipeline production ready
+
+Status: **partially done**, for a single-instance/small-trusted-team deployment target. Full design and task-by-task plan: `docs/superpowers/specs/2026-08-27-production-readiness-design.md` and `docs/superpowers/plans/2026-08-27-production-readiness.md`, implemented on `refactor` (commits `e4f1c29..2feb427`).
+
+- **Error handling**: ✅ addressed for the web layer — a `runDirector()` rejection now marks the feature `blocked` and logs a trace `error` event instead of only reaching the server's console, and the handler that does this can't itself crash the process on a secondary failure. The PM→...→DevOps QA-retry loop predates this work (Phase 6).
+- **Security**: ✅ addressed for the stated target — a shared bearer token (`AUTH_TOKEN`) gates every `/api/*` route with a timing-safe comparison, and `isValidFeatureId()` rejects path-traversal input before it reaches a filesystem path. Deliberately **not** addressed: per-user accounts, rate limiting, in-app TLS (a reverse proxy is assumed to sit in front).
+- **Scalability**: ❌ explicitly out of scope. The per-feature lock (`FeatureStateStore.acquireLock`/`releaseLock`) and the live-update `EventEmitter` in `trace-logger.ts` both only work within a single process — horizontal scaling would need a distributed lock and a shared pub/sub, neither of which exists. Revisit if the deployment target ever changes from single-instance.
+- **Logging and monitoring**: 🟡 minimally addressed — `GET /healthz` plus a `docker-compose.yml` `healthcheck:` block support container orchestration, but there's still no metrics/alerting/dashboards beyond the existing JSONL trace files.
+- **Testing**: 🟡 improved but not complete — the suite now covers auth, locking (including a real concurrency regression test for a lock-reclaim race caught in review), featureId validation, and failure-surfacing. Two things remain genuinely unverified: the Docker image has never been built/run end-to-end (no Docker daemon was available while this was implemented), and `src/web/public/app.js`'s token-prompt flow has no automated test (no browser/DOM harness exists in this project).
+
 ## 1. Chat interface — web app
 
 Today the only way to use the pipeline is `npm run studio` from the terminal (`scripts/run-studio.ts`), which is just a thin layer over `runDirector()` (`src/agents/director/director.ts`). That function is already decoupled from the CLI — it takes `{featureId, task}` and returns a promise with the final result — so exposing it behind a web backend is, in principle, a matter of not touching the pipeline at all, just adding a new layer on top.

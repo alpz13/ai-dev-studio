@@ -44,6 +44,8 @@ export interface UpdateFeatureStateInput {
   qaRetries?: number;
 }
 
+const LOCK_STALE_MS = 30 * 60 * 1000; // 30 minutes — long enough to cover a full pipeline run, short enough that a crashed lock doesn't block a feature indefinitely.
+
 export function resolveFeaturesDir(baseDir = process.env.FEATURES_DIR ?? "features"): string {
   return path.isAbsolute(baseDir) ? baseDir : path.resolve(process.cwd(), baseDir);
 }
@@ -73,8 +75,87 @@ export class FeatureStateStore {
     const dir = path.join(this.featuresDir, state.featureId);
     await fs.mkdir(dir, { recursive: true });
     const toWrite: FeatureState = { ...state, updatedAt: new Date().toISOString() };
-    await fs.writeFile(this.statePath(state.featureId), JSON.stringify(toWrite, null, 2), "utf-8");
+    const finalPath = this.statePath(state.featureId);
+    const tmpPath = `${finalPath}.tmp`;
+    // Write to a temp file, then rename over the real path: rename() is
+    // atomic on the same filesystem on both POSIX and Windows, so a crash
+    // or failure mid-write can never leave state.json truncated/corrupt.
+    await fs.writeFile(tmpPath, JSON.stringify(toWrite, null, 2), "utf-8");
+    await fs.rename(tmpPath, finalPath);
     return toWrite;
+  }
+
+  private lockPath(featureId: string): string {
+    return path.join(this.featuresDir, featureId, ".lock");
+  }
+
+  private ownerPath(featureId: string): string {
+    return path.join(this.lockPath(featureId), "owner.json");
+  }
+
+  private async isLockStale(featureId: string): Promise<boolean> {
+    try {
+      const stat = await fs.stat(this.lockPath(featureId));
+      return Date.now() - stat.mtimeMs > LOCK_STALE_MS;
+    } catch {
+      // Lock directory vanished between our EEXIST and this stat (released
+      // concurrently by its owner) — nothing to reclaim; the mkdir retry
+      // below will succeed normally.
+      return true;
+    }
+  }
+
+  /**
+   * Atomic mutex via mkdir, which fails with EEXIST if the directory
+   * already exists — no locking library needed. Returns false if another
+   * run already holds the lock for this featureId. A lock directory older
+   * than LOCK_STALE_MS is treated as abandoned (the holder crashed or was
+   * killed without releasing it) and reclaimed automatically, so a
+   * container restart never permanently blocks a feature.
+   *
+   * Staleness is judged by the lock directory's own mtime (set atomically
+   * by mkdir), not by reading owner.json — a lock is briefly EEXIST-losable
+   * by a second caller before its owner finishes writing owner.json, and
+   * judging staleness from that file's presence/content would misjudge a
+   * lock that is merely a few milliseconds old as abandoned.
+   *
+   * Reclaiming a stale lock uses fs.rename as the atomic claim step: if two
+   * callers race to reclaim the same stale lock, only one rename succeeds —
+   * the loser gets ENOENT and backs off (returns false) instead of forcing
+   * through, so the mutex holds even during reclaim.
+   */
+  async acquireLock(featureId: string): Promise<boolean> {
+    await fs.mkdir(path.join(this.featuresDir, featureId), { recursive: true });
+    try {
+      await fs.mkdir(this.lockPath(featureId));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      if (!(await this.isLockStale(featureId))) return false;
+
+      const claimPath = `${this.lockPath(featureId)}.stale-${process.pid}-${Date.now()}`;
+      try {
+        await fs.rename(this.lockPath(featureId), claimPath);
+      } catch (renameErr) {
+        if ((renameErr as NodeJS.ErrnoException).code === "ENOENT") return false;
+        throw renameErr;
+      }
+      await fs.rm(claimPath, { recursive: true, force: true }).catch((cleanupErr) => {
+        console.error(`[feature-state] failed to clean up reclaimed stale lock at ${claimPath}:`, cleanupErr);
+      });
+
+      try {
+        await fs.mkdir(this.lockPath(featureId));
+      } catch (retryErr) {
+        if ((retryErr as NodeJS.ErrnoException).code === "EEXIST") return false;
+        throw retryErr;
+      }
+    }
+    await fs.writeFile(this.ownerPath(featureId), JSON.stringify({ pid: process.pid, startedAt: Date.now() }), "utf-8");
+    return true;
+  }
+
+  async releaseLock(featureId: string): Promise<void> {
+    await fs.rm(this.lockPath(featureId), { recursive: true, force: true });
   }
 
   /** Creates the feature if it doesn't exist, or shallow-merges the given fields if it does. */

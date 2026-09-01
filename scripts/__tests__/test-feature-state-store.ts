@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { FeatureStateStore } from "../src/feature-state/store.js";
+import { FeatureStateStore } from "../../src/feature-state/store.js";
 
 async function main() {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ai-dev-studio-test-"));
