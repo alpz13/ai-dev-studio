@@ -1,20 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ClaudeCodeEditorTabs">
-    <option name="activeSessionId" value="40f977b5-ee9b-490e-8f41-64646d40ead1" />
+    <option name="activeSessionId" value="5c0e7c40-acc5-41c3-8451-eb2bb1fbd2fe" />
     <option name="openSessionIds">
       <list>
         <option value="40f977b5-ee9b-490e-8f41-64646d40ead1" />
+        <option value="e703c216-6a5b-4e3b-a78f-cd89543f4352" />
+        <option value="af42b1fa-945c-46c1-acf7-cc162e21986f" />
+        <option value="5c0e7c40-acc5-41c3-8451-eb2bb1fbd2fe" />
       </list>
     </option>
     <option name="sessionPaths">
       <map>
         <entry key="40f977b5-ee9b-490e-8f41-64646d40ead1" value="/sessions/new" />
+        <entry key="5c0e7c40-acc5-41c3-8451-eb2bb1fbd2fe" value="/sessions/fc06ee89-3246-4158-8442-e5f773f75450" />
+        <entry key="af42b1fa-945c-46c1-acf7-cc162e21986f" value="/sessions/new" />
       </map>
     </option>
     <option name="sessionTitles">
       <map>
         <entry key="40f977b5-ee9b-490e-8f41-64646d40ead1" value="Claude Code" />
+        <entry key="5c0e7c40-acc5-41c3-8451-eb2bb1fbd2fe" value="analyze the complete project ai-dev-studio. what i" />
+        <entry key="af42b1fa-945c-46c1-acf7-cc162e21986f" value="Claude Code" />
       </map>
     </option>
   </component>
