@@ -43,9 +43,6 @@ jobs:
           plugins: 'code-review@claude-code-plugins'
           allowed_bots: "claude[bot]"
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          # TEMPORARY: reveals the actual Claude error output for debugging a silent
-          # is_error:true failure. Revert once the review action is passing again.
-          show_full_output: true
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
