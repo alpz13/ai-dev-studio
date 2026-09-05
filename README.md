@@ -152,6 +152,37 @@ cp .env.example .env   # and set your ANTHROPIC_API_KEY
    npm run test
    ```
 
+10. **Director MCP server** — expose the whole pipeline as MCP tools for an external MCP host (Claude Desktop, Claude Code, another agent), instead of driving it via `npm run studio`/`npm run web`. Not part of the original 7-phase roadmap above; see [CLAUDE.md](./CLAUDE.md)'s "Director MCP server" design decision for the full rationale.
+
+    No-API-key end-to-end test (spawns the server, exercises tool listing and error paths):
+
+    ```bash
+    npm run test:mcp-director
+    ```
+
+    Manual run, for inspection (prints a readiness line to stderr, then waits for an MCP client to connect over stdio):
+
+    ```bash
+    npm run mcp:director
+    ```
+
+    To actually use it (requires `ANTHROPIC_API_KEY`), point an MCP host's config at it:
+
+    ```json
+    {
+      "mcpServers": {
+        "ai-dev-studio-director": {
+          "command": "npx",
+          "args": ["tsx", "src/mcp-servers/director/server.ts"],
+          "cwd": "/path/to/ai-dev-studio",
+          "env": { "ANTHROPIC_API_KEY": "..." }
+        }
+      }
+    }
+    ```
+
+    Then: call `run_feature` with `{ "task": "..." }` to get back a `featureId`, poll `get_feature_status` with that `featureId` until `outcome` is `"done"` or `"blocked"`, and use `get_feature_state`/`list_features` to inspect things in more detail.
+
 ## What's next
 
 All 7 phases (0 through 6) of ARCHITECTURE.md's original roadmap are done: the multi-agent pipeline, Dev's subagents, live progress streaming, and now token accounting, a trace summary, and a real fix to the qaRetries resume bug. There's no numbered "next phase" left — from here, growth is expected to come from [FUTURE.md](./FUTURE.md)'s speculative topics, none of which is scheduled yet:

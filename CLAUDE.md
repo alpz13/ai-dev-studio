@@ -39,6 +39,7 @@ npm run trace-summary -- feat_<featureId>   # print a human-readable trace summa
 # Run an MCP server directly (stdio transport), for manual inspection
 npm run mcp:feature-state
 npm run mcp:filesystem-git
+npm run mcp:director        # exposes the whole pipeline (run_feature/get_feature_status/get_feature_state/list_features) to an external MCP host
 
 # Production build (tsc -p tsconfig.build.json + copy static web assets into dist/)
 npm run build
@@ -61,7 +62,8 @@ src/
 ├── feature-state/store.ts                # Phase 1: pure disk-based state logic, no network deps
 ├── mcp-servers/
 │   ├── feature-state/server.ts           # Phase 1: MCP server wrapping FeatureStateStore (3 tools)
-│   └── filesystem-git/server.ts          # Phase 2: MCP server wrapping fs-ops + git-ops (7 tools)
+│   ├── filesystem-git/server.ts          # Phase 2: MCP server wrapping fs-ops + git-ops (7 tools)
+│   └── director/server.ts                # exposes the whole pipeline to an external MCP host (4 tools; see "Director MCP server" below)
 ├── filesystem-git/
 │   ├── fs-ops.ts                         # Phase 2: sandboxed read/write/list, scoped to WORKSPACE_ROOT
 │   └── git-ops.ts                        # Phase 2: git via system CLI (child_process), no extra deps
@@ -79,6 +81,7 @@ src/
 │   │   └── mcp-command.ts                # picks tsx+src (dev) vs node+dist (prod, NODE_ENV=production) to spawn MCP server subprocesses
 │   ├── director/
 │   │   ├── director.ts                   # Phase 3: thin orchestration loop; delegates work to stage defs
+│   │   ├── run-feature.ts                # validate/lock/fire-and-forget runDirector() + surface failures; shared by web/server.ts and mcp-servers/director/server.ts
 │   │   ├── pipeline.ts                   # PIPELINE array + StageDefinition types
 │   │   ├── pipeline-mechanics.ts         # retry, resume, error recovery logic
 │   │   ├── slugify.ts                    # featureId generation from a task string
@@ -110,6 +113,22 @@ src/
 - `POST /api/features` — start (`{ task }`) or resume (`{ featureId }`) a feature; `409` if that feature is already running
 - `GET /api/features/:featureId/stream` — Server-Sent Events: full history then live events (auth via header or `?token=`, since `EventSource` can't set headers)
 - `GET /api/features/:featureId/summary` — stage durations, tokens, QA retries, resume history
+
+**Director MCP server**: `mcp-servers/director/server.ts` wraps `runDirector()` itself as MCP tools (`run_feature`, `get_feature_status`, `get_feature_state`, `list_features`), so an external MCP host can drive a full feature build the same way the web UI does. `run_feature` shares its validate/lock/fire-and-forget/failure-surfacing logic with `web/server.ts`'s `POST /api/features` via `run-feature.ts`'s `startOrResumeFeatureInBackground()`, rather than each transport reimplementing it. That helper deliberately lives in its own module instead of inside `director.ts`: a same-module call to `runDirector()` would bypass Vitest's `vi.mock` (which only intercepts cross-module imports), breaking test isolation. No bearer-token auth on this server, unlike the web server — it's spawned locally over stdio by a trusted host, the same trust model as the other two internal MCP servers.
+
+Example host config (dev mode):
+```json
+{
+  "mcpServers": {
+    "ai-dev-studio-director": {
+      "command": "npx",
+      "args": ["tsx", "src/mcp-servers/director/server.ts"],
+      "cwd": "/path/to/ai-dev-studio",
+      "env": { "ANTHROPIC_API_KEY": "..." }
+    }
+  }
+}
+```
 
 **Filesystem sandboxing**: `fs-ops.ts::resolveSafePath` rejects any path that resolves outside `WORKSPACE_ROOT`. Don't bypass it when adding new filesystem tools.
 

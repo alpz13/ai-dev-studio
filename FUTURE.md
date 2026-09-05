@@ -57,3 +57,82 @@ Before trusting QA's verdict against a real repo: build that MCP (a tool that ru
 ## How this fits the roadmap
 
 None of these three points under section 3 is a new roadmap phase — they're safety prerequisites for the day it's decided to use the project against real code, regardless of which roadmap phase we're in. Points 1 and 2 do line up with what ARCHITECTURE.md already calls Phase 5 (chat with streaming) — this document exists so that, in the meantime, the detail of the design decisions (event streaming vs. text streaming, Slack as another subscriber, etc.) that were discussed along the way to that phase isn't lost.
+
+## 4. Other ideas
+
+
+
+                    ┌─────────────────────────┐
+                    │ User message received   │
+                    └────────────┬────────────┘
+                                 │
+                    ┌────────────▼────────────┐
+                    │ About to EnterPlanMode? │
+                    └────────────┬────────────┘
+                                 │
+                         ┌───────▼────────┐
+                         │ Already        │
+                         │ brainstormed?  │
+                         └─┬──────────┬───┘
+                      no   │          │   yes
+                ┌───────────▼┐   ┌────▼──────────────┐
+                │ Invoke     │   │ Might any skill   │
+                │ brainstorm │───┤ apply?            │
+                │ skill      │   └─┬──────────────┬──┘
+                └────────────┘   yes│             │definitely not
+                                    │        ┌────▼──────────────────┐
+                        ┌───────────▼──┐     │ Respond               │
+                        │ Invoke Skill │     │ (including            │
+                        │ tool         │     │ clarifications) ✅    │
+                        └────────┬─────┘     └───────────────────────┘
+                                 │
+                        ┌────────▼──────────┐
+                        │ Announce: Using   │
+                        │ [skill] to [...]  │
+                        └────────┬──────────┘
+                                 │
+                           ┌─────▼──────┐
+                           │ Has        │
+                           │ checklist? │
+                           └┬──────────┬┘
+                        yes │          │ no
+                    ┌───────▼─┐   ┌────▼──────┐
+                    │ Create  │   │ Follow    │
+                    │ Todo    ├───┤ skill     │
+                    │         │   │ exactly   │
+                    └────┬────┘   └────┬──────┘
+                         └──────┬──────┘
+                                │
+                         ┌──────▼────────┐
+                         │ Done ✅       │
+                         └───────────────┘
+
+```mermaid
+graph TD
+    A["🔵 User message received"]
+    B["About to EnterPlanMode?"]
+    C{Already brainstormed?}
+    D["Invoke brainstorming skill"]
+    E{Might any skill apply?}
+    F["Invoke Skill tool"]
+    G["Announce:<br/>Using [skill]<br/>to [purpose]"]
+    H{Has checklist?}
+    I["Create Todo<br/>Write todo per item"]
+    J["Follow skill exactly"]
+    K["✅ Respond<br/>including clarifications"]
+    
+    A --> B
+    B --> C
+    C -->|no| D
+    C -->|yes| E
+    D --> E
+    A --> E
+    E -->|yes,<br/>even 1%| F
+    E -->|definitely<br/>not| K
+    F --> G
+    G --> H
+    H -->|yes| I
+    H -->|no| J
+    I --> J
+    J --> K
+```

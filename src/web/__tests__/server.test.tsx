@@ -14,7 +14,10 @@ const runDirectorMock = vi.fn(async (opts: { featureId: string; task?: string })
   finalState: { featureId: opts.featureId, title: opts.task ?? opts.featureId, status: "done", currentStage: "DevOps", stages: {}, updatedAt: new Date().toISOString() },
 }));
 
-vi.mock("../../agents/director/director.js", () => ({ runDirector: runDirectorMock }));
+vi.mock("../../agents/director/director.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../agents/director/director.js")>();
+  return { ...actual, runDirector: runDirectorMock };
+});
 
 const closeMock = vi.fn(async () => {});
 const listPendingFeaturesMock = vi.fn(async () => [] as unknown[]);
