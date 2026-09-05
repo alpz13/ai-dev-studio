@@ -24,12 +24,11 @@ import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runDirector } from "../agents/director/director.js";
-import { connectFeatureStateClient, listPendingFeatures, getFeatureState, updateFeatureState, type FeatureStateToolsClient } from "../agents/shared/feature-state-client.js";
-import { generateFeatureId, isValidFeatureId } from "../agents/director/slugify.js";
-import { traceEvents, TraceLogger, newSpanId, type TraceEvent } from "../observability/trace-logger.js";
+import { startOrResumeFeatureInBackground, FeatureAlreadyRunningError } from "../agents/director/run-feature.js";
+import { connectFeatureStateClient, listPendingFeatures, type FeatureStateToolsClient } from "../agents/shared/feature-state-client.js";
+import { isValidFeatureId } from "../agents/director/slugify.js";
+import { traceEvents, TraceLogger, type TraceEvent } from "../observability/trace-logger.js";
 import { summarizeTrace } from "../observability/trace-summary.js";
-import { FeatureStateStore, type StageName, type StageInfo } from "../feature-state/store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -100,82 +99,15 @@ async function handleStartOrResume(req: IncomingMessage, res: ServerResponse): P
   const featureId = typeof body.featureId === "string" && body.featureId.trim() ? body.featureId.trim() : undefined;
   const task = typeof body.task === "string" && body.task.trim() ? body.task.trim() : undefined;
 
-  if (!featureId && !task) {
-    sendJson(res, 400, { error: "Provide either featureId (to resume) or task (to start a new feature)." });
-    return;
-  }
-
-  const resolvedFeatureId = featureId ?? generateFeatureId(task!);
-
-  if (!isValidFeatureId(resolvedFeatureId)) {
-    sendJson(res, 400, { error: `Invalid featureId "${resolvedFeatureId}".` });
-    return;
-  }
-
-  // A duplicate start/resume request for a feature that's already running
-  // races two Director runs against the same state.json. The lock is a
-  // web-server-level concern (rejecting a duplicate HTTP request), not a
-  // pipeline concern, so it lives here rather than in director.ts.
-  const lockStore = new FeatureStateStore();
-  const acquired = await lockStore.acquireLock(resolvedFeatureId);
-  if (!acquired) {
-    sendJson(res, 409, { error: `Feature "${resolvedFeatureId}" is already running.` });
-    return;
-  }
-
-  // Fire and forget: a full pipeline run makes several real Messages API
-  // calls and can take a while. The caller gets the featureId back right
-  // away and watches progress over the SSE stream below — runDirector
-  // already persists every step to Feature State + the trace log itself,
-  // so a closed browser tab never loses work, it just stops watching it.
-  runDirector({ featureId: resolvedFeatureId, task })
-    .catch((err) => surfacePipelineFailure(resolvedFeatureId, err))
-    .finally(() => {
-      lockStore.releaseLock(resolvedFeatureId).catch((err) => {
-        console.error(`[web] releaseLock(${resolvedFeatureId}) failed:`, err);
-      });
-    });
-
-  sendJson(res, 202, { featureId: resolvedFeatureId });
-}
-
-async function surfacePipelineFailure(featureId: string, err: unknown): Promise<void> {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`[web] runDirector(${featureId}) failed:`, err);
-
-  // This runs off the end of a fire-and-forget chain (see startFeature above)
-  // whose only remaining step is lockStore.releaseLock in a .finally(). If
-  // anything below throws — e.g. the feature-state MCP subprocess fails to
-  // spawn — that rejection must not propagate, or it becomes an unhandled
-  // promise rejection that crashes the whole web server. So: never reject:
-  // catch and log any secondary failure instead of letting it surface.
   try {
-    const client = await connectFeatureStateClient();
-    try {
-      const featureClient = client as unknown as FeatureStateToolsClient;
-      const existing = await getFeatureState(featureClient, featureId);
-      const currentStage: StageName = existing?.currentStage ?? "PM";
-      const stages = { [currentStage]: { status: "failed", notes: message } } as Partial<
-        Record<StageName, StageInfo>
-      >;
-      await updateFeatureState(featureClient, { featureId, status: "blocked", stages });
-    } finally {
-      await client.close();
+    const result = await startOrResumeFeatureInBackground({ featureId, task });
+    sendJson(res, 202, { featureId: result.featureId });
+  } catch (err) {
+    if (err instanceof FeatureAlreadyRunningError) {
+      sendJson(res, 409, { error: err.message });
+      return;
     }
-
-    const logger = new TraceLogger();
-    await logger.log({
-      traceId: featureId,
-      spanId: newSpanId("agt_director"),
-      agentRole: "Director",
-      event: "error",
-      note: message,
-    });
-  } catch (secondaryErr) {
-    console.error(
-      `[web] surfacePipelineFailure(${featureId}) failed while surfacing original error "${message}":`,
-      secondaryErr,
-    );
+    sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
   }
 }
 
