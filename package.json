@@ -22,7 +22,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "sonar": "npm run test:coverage && sonar-scanner-npm"
+    "sonar": "npm run test:coverage && dotenv -e .env -- sonar-scanner-npm"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
@@ -32,6 +32,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^2.1.8",
+    "dotenv-cli": "^11.0.0",
     "sonarqube-scanner": "^5.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
