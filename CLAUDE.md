@@ -149,4 +149,4 @@ curl http://localhost:3000/healthz                                    # unauthen
 curl -H "Authorization: Bearer $AUTH_TOKEN" http://localhost:3000/api/features
 ```
 
-`.github/workflows/ci.yml` runs `npm ci && npm run typecheck && npm test` on push/PR (separate from the `claude*.yml` review-bot workflows). The Docker image itself has not been built/run in this environment — verify with a real `docker compose up --build` before relying on it.
+`.github/workflows/ci.yml` runs two jobs on push/PR (separate from the `claude*.yml` review-bot workflows): `test` (`npm ci && npm run typecheck && npm test`) and `sonar` (`npm run test:coverage` then a SonarCloud scan via `SonarSource/sonarqube-scan-action`, configured in `sonar-project.properties`; needs a `SONAR_TOKEN` repo secret; non-blocking, meaning it reports analysis but does not fail CI based on the Quality Gate verdict). The Docker image itself has not been built/run in this environment — verify with a real `docker compose up --build` before relying on it.
