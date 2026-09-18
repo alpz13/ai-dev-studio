@@ -223,7 +223,7 @@ describe("agents/shared/filesystem-agent: createFilesystemAgent with subagents (
     expect(subStart).toBeDefined();
     expect(subStart?.parentSpanId).toBe(parentStart?.spanId);
     expect(subStart?.agentRole).toBe("Dev");
-    expect((subStart?.input as any)?.module).toBe("validation.ts");
+    expect((subStart?.input as { module?: string } | undefined)?.module).toBe("validation.ts");
 
     const subEnd = events.find((e) => e.event === "agent_end" && e.spanId === subStart?.spanId);
     expect(subEnd?.output).toBe("Subagent: validation added.");
