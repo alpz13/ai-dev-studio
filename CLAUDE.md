@@ -40,6 +40,9 @@ npm run trace-summary -- feat_<featureId>   # print a human-readable trace summa
 npm run mcp:feature-state
 npm run mcp:filesystem-git
 
+# Local SonarCloud scan (requires SONAR_TOKEN exported in your shell — see .env.example)
+npm run sonar
+
 # Production build (tsc -p tsconfig.build.json + copy static web assets into dist/)
 npm run build
 

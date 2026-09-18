@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TraceEvent } from "../../observability/trace-logger.js";
 
 // The web layer is a thin transport on top of runDirector() (Phase 3) and
 // the Feature State MCP client (Phase 1/3) — both already have their own
@@ -38,11 +39,11 @@ function authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
   return fetch(url, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${AUTH_TOKEN}` } });
 }
 
-async function readSseEvents(response: Response, count: number, signal: AbortSignal): Promise<any[]> {
+async function readSseEvents(response: Response, count: number, signal: AbortSignal): Promise<TraceEvent[]> {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  const events: any[] = [];
+  const events: TraceEvent[] = [];
   while (events.length < count && !signal.aborted) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -300,7 +301,10 @@ describe("web/server", () => {
     let resolveRun!: () => void;
     runDirectorMock.mockImplementationOnce(
       () => new Promise((resolve) => {
-        resolveRun = () => resolve({ featureId: "feat_locked", finalState: {} as any });
+        resolveRun = () => resolve({
+          featureId: "feat_locked",
+          finalState: { featureId: "feat_locked", title: "feat_locked", status: "done", currentStage: "DevOps", stages: {}, updatedAt: new Date().toISOString() },
+        });
       }),
     );
 

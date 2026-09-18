@@ -55,16 +55,20 @@
     });
   }
 
+  function detailForEvent(event) {
+    if (event.event === "message" && event.note) return event.note;
+    if (event.event === "tool_call" && event.tool) return "tool: " + event.tool;
+    if (event.event === "tool_result" && event.tool) return "tool result: " + event.tool + (event.isError ? " (error)" : "");
+    if (event.event === "agent_end" && event.output) return String(event.output).slice(0, 160);
+    if (event.event === "error" && event.output) return String(event.output).slice(0, 200);
+    return "";
+  }
+
   function appendLog(event) {
     var line = document.createElement("div");
     line.className = "line" + (event.event === "error" ? " error" : "");
     var ts = event.timestamp ? event.timestamp.split("T")[1].replace("Z", "") : "";
-    var detail = "";
-    if (event.event === "message" && event.note) detail = event.note;
-    else if (event.event === "tool_call" && event.tool) detail = "tool: " + event.tool;
-    else if (event.event === "tool_result" && event.tool) detail = "tool result: " + event.tool + (event.isError ? " (error)" : "");
-    else if (event.event === "agent_end" && event.output) detail = String(event.output).slice(0, 160);
-    else if (event.event === "error" && event.output) detail = String(event.output).slice(0, 200);
+    var detail = detailForEvent(event);
     var nesting = event.parentSpanId ? " ↳ " : "";
     line.innerHTML =
       '<span class="ts">[' + ts + ']</span> ' +
@@ -86,7 +90,7 @@
     // the same agentRole, so it must not double-drive the Dev badge.
     if (event.parentSpanId) return;
 
-    if (STAGES.indexOf(event.agentRole) !== -1) {
+    if (STAGES.includes(event.agentRole)) {
       if (event.event === "agent_start") stageStatus[event.agentRole] = "in_progress";
       else if (event.event === "agent_end") stageStatus[event.agentRole] = "done";
       else if (event.event === "error") stageStatus[event.agentRole] = "failed";

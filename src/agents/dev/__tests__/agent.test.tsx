@@ -91,7 +91,7 @@ describe("agents/dev/agent: runDevAgent", () => {
     await runDevAgent({ featureId, task: "implement something", workspaceRoot: `workspaces/${featureId}` });
 
     const tools = createMock.mock.calls[0][0].tools;
-    expect(tools.some((t: any) => t.name === "delegate_to_subagent")).toBe(true);
+    expect(tools.some((t: { name: string }) => t.name === "delegate_to_subagent")).toBe(true);
   });
 
   it("the system prompt explains when to delegate to a subagent and when not to", async () => {

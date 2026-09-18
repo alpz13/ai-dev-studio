@@ -4,6 +4,9 @@
   "private": true,
   "description": "Simulated software development studio run by AI agents — a practice project for the Anthropic stack (TS SDK, Messages API, MCP, agents, multi-agent, subagents).",
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "test:store": "tsx scripts/__tests__/test-feature-state-store.ts",
     "mcp:feature-state": "tsx src/mcp-servers/feature-state/server.ts",
@@ -21,7 +24,10 @@
     "build": "tsc -p tsconfig.build.json && node scripts/copy-static-assets.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "sonar": "npm run test:coverage && dotenv -e .env -- sonar-scanner-npm",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
@@ -29,10 +35,16 @@
     "dotenv": "^16.4.5"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^2.1.8",
+    "dotenv-cli": "^11.0.0",
+    "eslint": "^9.39.5",
+    "globals": "^17.12.0",
+    "sonarqube-scanner": "^5.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
+    "typescript-eslint": "^8.70.0",
     "vitest": "^2.1.8"
   }
 }

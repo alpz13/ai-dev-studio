@@ -131,15 +131,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-async function main() {
+try {
   await ensureRoot(WORKSPACE_ROOT);
   await gitInitIfNeeded(WORKSPACE_ROOT);
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(`[filesystem-git-mcp] ready, workspace: ${WORKSPACE_ROOT}`);
-}
-
-main().catch((err) => {
+} catch (err) {
   console.error("[filesystem-git-mcp] fatal error:", err);
   process.exit(1);
-});
+}

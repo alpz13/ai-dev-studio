@@ -334,7 +334,7 @@ describe("agents/shared/run-agent-loop: subagentTool (Phase 4)", () => {
   });
 
   it("with subagentTool, delegate_to_subagent is added to the tools with its schema", async () => {
-    let receivedTools: any;
+    let receivedTools: unknown;
     const anthropic: AnthropicMessagesClient = {
       messages: { create: async (params) => { receivedTools = params.tools; return textResponse("done"); } },
     };
@@ -350,10 +350,11 @@ describe("agents/shared/run-agent-loop: subagentTool (Phase 4)", () => {
     });
 
     expect(receivedTools).toHaveLength(2);
-    const delegateTool = receivedTools.find((t: any) => t.name === "delegate_to_subagent");
+    const tools = receivedTools as Array<{ name: string; description: string; input_schema: unknown }>;
+    const delegateTool = tools.find((t) => t.name === "delegate_to_subagent");
     expect(delegateTool).toBeDefined();
-    expect(delegateTool.description).toBe("delegates a portion");
-    expect(delegateTool.input_schema).toEqual({
+    expect(delegateTool!.description).toBe("delegates a portion");
+    expect(delegateTool!.input_schema).toEqual({
       type: "object",
       properties: {
         module: { type: "string", description: "Specific file or module the subagent will work on." },

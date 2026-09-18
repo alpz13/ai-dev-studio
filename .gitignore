@@ -8,6 +8,9 @@
 # testing
 /coverage
 
+# SonarQube/SonarCloud scanner working directory (npm run sonar)
+/.scannerwork
+
 # next.js
 /.next/
 /out/
@@ -17,6 +20,7 @@
 
 # misc
 .DS_Store
+.idea
 *.pem
 
 # debug
