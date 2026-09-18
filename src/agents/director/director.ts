@@ -15,7 +15,7 @@
  * pipeline-mechanics.ts. Adding a new stage: create stages/<name>.ts and
  * add one entry to PIPELINE in pipeline.ts — nothing else changes here.
  */
-import { newSpanId, TraceLogger } from "../../observability/trace-logger.js";
+import { newSpanId, TraceLogger, type TraceContext } from "../../observability/trace-logger.js";
 import {
   connectFeatureStateClient,
   getFeatureState,
@@ -36,6 +36,27 @@ export interface RunDirectorOptions {
 export interface DirectorResult {
   featureId: string;
   finalState: import("../../feature-state/store.js").FeatureState;
+}
+
+// Phase 6 — robust resume: distinguish interrupted (crash/kill) from
+// blocked (agent threw or QA exhausted retries) so the trace is clear.
+async function logResumeIfNeeded(
+  traceLogger: TraceLogger,
+  directorCtx: TraceContext,
+  state: import("../../feature-state/store.js").FeatureState,
+): Promise<void> {
+  const kind = state.status === "blocked" ? "blocked" : "interrupted";
+  await traceLogger.log({
+    ...directorCtx,
+    event: "message",
+    stage: state.currentStage,
+    note:
+      kind === "interrupted"
+        ? `Resuming feature "${state.featureId}": it was interrupted mid-stage "${state.currentStage}" — continuing from there.`
+        : `Resuming feature "${state.featureId}": it was blocked at stage "${state.currentStage}" — continuing from there.`,
+    resumeKind: kind,
+    qaRetries: state.qaRetries ?? 0,
+  });
 }
 
 export async function runDirector(opts: RunDirectorOptions): Promise<DirectorResult> {
@@ -66,21 +87,8 @@ export async function runDirector(opts: RunDirectorOptions): Promise<DirectorRes
       });
     }
 
-    // Phase 6 — robust resume: distinguish interrupted (crash/kill) from
-    // blocked (agent threw or QA exhausted retries) so the trace is clear.
     if (isResuming && state.status !== "done") {
-      const kind = state.status === "blocked" ? "blocked" : "interrupted";
-      await traceLogger.log({
-        ...directorCtx,
-        event: "message",
-        stage: state.currentStage,
-        note:
-          kind === "interrupted"
-            ? `Resuming feature "${featureId}": it was interrupted mid-stage "${state.currentStage}" — continuing from there.`
-            : `Resuming feature "${featureId}": it was blocked at stage "${state.currentStage}" — continuing from there.`,
-        resumeKind: kind,
-        qaRetries: state.qaRetries ?? 0,
-      });
+      await logResumeIfNeeded(traceLogger, directorCtx, state);
     }
 
     const workspaceRoot = `workspaces/${featureId}`;

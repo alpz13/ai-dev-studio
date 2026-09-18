@@ -12,9 +12,7 @@ const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929
 
 let _client: Anthropic | null = null;
 function getClient(): Anthropic {
-  if (!_client) {
-    _client = new Anthropic(); // reads ANTHROPIC_API_KEY from environment variables
-  }
+  _client ??= new Anthropic(); // reads ANTHROPIC_API_KEY from environment variables
   return _client;
 }
 

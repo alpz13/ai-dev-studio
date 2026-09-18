@@ -52,9 +52,12 @@ function isAuthorized(req: IncomingMessage, url: URL, allowQueryToken: boolean):
   if (!expected) return false;
 
   const header = req.headers.authorization;
-  const provided = header?.startsWith("Bearer ")
-    ? header.slice("Bearer ".length)
-    : (allowQueryToken ? url.searchParams.get("token") : null);
+  let provided: string | null;
+  if (header?.startsWith("Bearer ")) {
+    provided = header.slice("Bearer ".length);
+  } else {
+    provided = allowQueryToken ? url.searchParams.get("token") : null;
+  }
   if (!provided) return false;
 
   const providedBuf = Buffer.from(provided);
@@ -293,7 +296,7 @@ export function createWebServer(_opts: WebServerOptions = {}): Server {
           return;
         }
 
-        const streamMatch = pathname.match(/^\/api\/features\/([^/]+)\/stream$/);
+        const streamMatch = /^\/api\/features\/([^/]+)\/stream$/.exec(pathname);
         if (req.method === "GET" && streamMatch) {
           const featureId = decodeURIComponent(streamMatch[1]);
           if (!isValidFeatureId(featureId)) {
@@ -304,7 +307,7 @@ export function createWebServer(_opts: WebServerOptions = {}): Server {
           return;
         }
 
-        const summaryMatch = pathname.match(/^\/api\/features\/([^/]+)\/summary$/);
+        const summaryMatch = /^\/api\/features\/([^/]+)\/summary$/.exec(pathname);
         if (req.method === "GET" && summaryMatch) {
           const featureId = decodeURIComponent(summaryMatch[1]);
           if (!isValidFeatureId(featureId)) {

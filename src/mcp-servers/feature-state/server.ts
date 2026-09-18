@@ -118,14 +118,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-async function main() {
+try {
   await store.ensureDir();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("[feature-state-mcp] ready, listening on stdio");
-}
-
-main().catch((err) => {
+} catch (err) {
   console.error("[feature-state-mcp] fatal error:", err);
   process.exit(1);
-});
+}

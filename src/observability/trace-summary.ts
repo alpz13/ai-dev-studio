@@ -66,6 +66,75 @@ function durationMs(startIso: string, endIso: string): number {
   return new Date(endIso).getTime() - new Date(startIso).getTime();
 }
 
+function resolveOutcome(directorEvents: TraceEvent[], directorTerminal: TraceEvent | undefined): FeatureOutcome {
+  if (!directorTerminal) {
+    return directorEvents.length === 0 ? "unknown" : "in_progress";
+  }
+  if (directorTerminal.event === "error") return "blocked";
+
+  const output = typeof directorTerminal.output === "string" ? directorTerminal.output : "";
+  if (output.startsWith("Blocked")) return "blocked";
+  if (output.startsWith("Pipeline complete")) return "done";
+  return "unknown";
+}
+
+function collectResumeEvents(directorEvents: TraceEvent[]): ResumeEvent[] {
+  return directorEvents
+    .filter((e): e is TraceEvent & { resumeKind: "interrupted" | "blocked" } =>
+      e.resumeKind === "interrupted" || e.resumeKind === "blocked",
+    )
+    .map((e) => ({
+      timestamp: e.timestamp,
+      stage: typeof e.stage === "string" ? e.stage : "",
+      kind: e.resumeKind,
+      note: typeof e.note === "string" ? e.note : "",
+    }));
+}
+
+function groupBySpan(stageEvents: TraceEvent[]): Map<string, TraceEvent[]> {
+  const bySpan = new Map<string, TraceEvent[]>();
+  for (const e of stageEvents) {
+    const list = bySpan.get(e.spanId) ?? [];
+    list.push(e);
+    bySpan.set(e.spanId, list);
+  }
+  return bySpan;
+}
+
+function applySpanToStageSummary(spanEvents: TraceEvent[], stageSummaries: Map<StageName, StageSummary>): void {
+  const start = spanEvents.find((e) => e.event === "agent_start");
+  if (!start) return; // no agent_start at all — nothing we can attribute
+  const stage = start.agentRole as StageName;
+  const summary = stageSummaries.get(stage);
+  if (!summary) return; // defensive: unknown role, ignore rather than throw
+
+  const terminal = spanEvents.find((e) => e.event === "agent_end" || e.event === "error");
+  const isSubagent = typeof start.parentSpanId === "string";
+  const tokensUsed = terminal && typeof terminal.tokensUsed === "number" ? terminal.tokensUsed : 0;
+
+  summary.tokensUsed += tokensUsed;
+  if (isSubagent) return;
+
+  summary.runs += 1;
+  if (terminal) {
+    summary.durationMs += durationMs(start.timestamp, terminal.timestamp);
+  } else {
+    summary.incomplete = true;
+  }
+}
+
+function buildStageSummaries(stageEvents: TraceEvent[]): Map<StageName, StageSummary> {
+  const stageSummaries = new Map<StageName, StageSummary>(
+    STAGE_ORDER.map((stage) => [stage, { stage, runs: 0, durationMs: 0, tokensUsed: 0, incomplete: false }]),
+  );
+
+  for (const spanEvents of groupBySpan(stageEvents).values()) {
+    applySpanToStageSummary(spanEvents, stageSummaries);
+  }
+
+  return stageSummaries;
+}
+
 export function summarizeTrace(featureId: string, events: TraceEvent[]): TraceSummary {
   const sorted = [...events].sort(byTimestamp);
 
@@ -78,72 +147,18 @@ export function summarizeTrace(featureId: string, events: TraceEvent[]): TraceSu
   const totalDurationMs =
     directorStart && directorTerminal ? durationMs(directorStart.timestamp, directorTerminal.timestamp) : null;
 
-  // --- Outcome: read the Director's last terminal event, if any.
-  let outcome: FeatureOutcome = "in_progress";
-  if (directorTerminal) {
-    if (directorTerminal.event === "error") {
-      outcome = "blocked";
-    } else {
-      const output = typeof directorTerminal.output === "string" ? directorTerminal.output : "";
-      outcome = output.startsWith("Blocked") ? "blocked" : output.startsWith("Pipeline complete") ? "done" : "unknown";
-    }
-  } else if (directorEvents.length === 0) {
-    outcome = "unknown";
-  }
+  const outcome = resolveOutcome(directorEvents, directorTerminal);
 
   // --- QA retries: one "message" event per retry, logged by the Director.
   const qaRetries = directorEvents.filter(
     (e) => e.event === "message" && e.stage === "QA" && typeof e.note === "string" && /retry \d+\/\d+/i.test(e.note),
   ).length;
 
-  // --- Resume events: logged once per resumed run, tagged with resumeKind.
-  const resumeEvents: ResumeEvent[] = directorEvents
-    .filter((e): e is TraceEvent & { resumeKind: "interrupted" | "blocked" } =>
-      e.resumeKind === "interrupted" || e.resumeKind === "blocked",
-    )
-    .map((e) => ({
-      timestamp: e.timestamp,
-      stage: typeof e.stage === "string" ? e.stage : "",
-      kind: e.resumeKind,
-      note: typeof e.note === "string" ? e.note : "",
-    }));
+  const resumeEvents = collectResumeEvents(directorEvents);
 
   // --- Per-stage runs: group by spanId to reconstruct each individual
   // agent invocation (a stage can have several, e.g. Dev after a QA retry).
-  const bySpan = new Map<string, TraceEvent[]>();
-  for (const e of stageEvents) {
-    const list = bySpan.get(e.spanId) ?? [];
-    list.push(e);
-    bySpan.set(e.spanId, list);
-  }
-
-  const stageSummaries = new Map<StageName, StageSummary>(
-    STAGE_ORDER.map((stage) => [stage, { stage, runs: 0, durationMs: 0, tokensUsed: 0, incomplete: false }]),
-  );
-
-  for (const spanEvents of bySpan.values()) {
-    const start = spanEvents.find((e) => e.event === "agent_start");
-    if (!start) continue; // no agent_start at all — nothing we can attribute
-    const stage = start.agentRole as StageName;
-    const summary = stageSummaries.get(stage);
-    if (!summary) continue; // defensive: unknown role, ignore rather than throw
-
-    const terminal = spanEvents.find((e) => e.event === "agent_end" || e.event === "error");
-    const isSubagent = typeof start.parentSpanId === "string";
-    const tokensUsed = terminal && typeof terminal.tokensUsed === "number" ? terminal.tokensUsed : 0;
-
-    summary.tokensUsed += tokensUsed;
-
-    if (!isSubagent) {
-      summary.runs += 1;
-      if (terminal) {
-        summary.durationMs += durationMs(start.timestamp, terminal.timestamp);
-      } else {
-        summary.incomplete = true;
-      }
-    }
-  }
-
+  const stageSummaries = buildStageSummaries(stageEvents);
   const totalTokensUsed = [...stageSummaries.values()].reduce((sum, s) => sum + s.tokensUsed, 0);
 
   return {

@@ -107,7 +107,7 @@
     font-size: 0.78rem;
     line-height: 1.5;
   }
-  .log .line { white-space: pre-wrap; word-break: break-word; }
+  .log .line { white-space: pre-wrap; overflow-wrap: break-word; }
   .log .line .ts { color: var(--muted); }
   .log .line .role { color: var(--accent); }
   .log .line.error .role { color: var(--failed); }

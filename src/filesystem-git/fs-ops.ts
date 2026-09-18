@@ -41,6 +41,12 @@ export async function listDirEntries(root: string, relPath = "."): Promise<DirEn
   const entries = await fs.readdir(full, { withFileTypes: true });
   return entries.map((entry) => ({
     name: entry.name,
-    type: entry.isDirectory() ? "dir" : entry.isFile() ? "file" : "other",
+    type: entryType(entry),
   }));
+}
+
+function entryType(entry: { isDirectory(): boolean; isFile(): boolean }): DirEntry["type"] {
+  if (entry.isDirectory()) return "dir";
+  if (entry.isFile()) return "file";
+  return "other";
 }

@@ -96,11 +96,7 @@ export interface RunAgentLoopOptions {
 
 const DEFAULT_SUBAGENT_TOOL_NAME = "delegate_to_subagent";
 
-export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<string> {
-  const model = opts.model ?? DEFAULT_MODEL;
-  const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
-  const subagentToolName = opts.subagentTool?.name ?? DEFAULT_SUBAGENT_TOOL_NAME;
-
+async function buildTools(opts: RunAgentLoopOptions, subagentToolName: string) {
   const { tools: mcpTools } = await opts.mcpClient.listTools();
   const tools = mcpToolsToAnthropicTools(
     mcpTools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
@@ -120,6 +116,52 @@ export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<string> {
       },
     });
   }
+
+  return tools;
+}
+
+async function runToolUse(
+  opts: RunAgentLoopOptions,
+  toolUse: { id: string; name: string; input: unknown },
+  subagentToolName: string,
+) {
+  await opts.traceLogger.log({ ...opts.traceCtx, event: "tool_call", tool: toolUse.name, input: toolUse.input });
+  try {
+    let text: string;
+    let isError: boolean;
+
+    if (opts.subagentTool && toolUse.name === subagentToolName) {
+      // Delegation to a subagent instead of an MCP tool_call — see
+      // SubagentToolConfig above and createFilesystemAgent, which builds
+      // this `run()` with its own child spanId (parentSpanId = this agent).
+      const input = toolUse.input as { module?: unknown; task?: unknown };
+      const moduleArg = typeof input.module === "string" ? input.module : "";
+      const taskArg = typeof input.task === "string" ? input.task : "";
+      text = await opts.subagentTool.run({ module: moduleArg, task: taskArg });
+      isError = false;
+    } else {
+      const result = await opts.mcpClient.callTool({
+        name: toolUse.name,
+        arguments: toolUse.input as Record<string, unknown>,
+      });
+      text = result.content.map((c) => (c as { text?: string }).text ?? "").join("\n");
+      isError = Boolean(result.isError);
+    }
+
+    await opts.traceLogger.log({ ...opts.traceCtx, event: "tool_result", tool: toolUse.name, output: text, isError });
+    return buildToolResultBlock(toolUse.id, text, isError);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await opts.traceLogger.log({ ...opts.traceCtx, event: "tool_result", tool: toolUse.name, output: message, isError: true });
+    return buildToolResultBlock(toolUse.id, message, true);
+  }
+}
+
+export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<string> {
+  const model = opts.model ?? DEFAULT_MODEL;
+  const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
+  const subagentToolName = opts.subagentTool?.name ?? DEFAULT_SUBAGENT_TOOL_NAME;
+  const tools = await buildTools(opts, subagentToolName);
 
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: opts.task }];
   let finalText = "";
@@ -152,34 +194,7 @@ export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<string> {
 
     const resultBlocks = [];
     for (const toolUse of toolUses) {
-      await opts.traceLogger.log({ ...opts.traceCtx, event: "tool_call", tool: toolUse.name, input: toolUse.input });
-      try {
-        let text: string;
-        let isError: boolean;
-
-        if (opts.subagentTool && toolUse.name === subagentToolName) {
-          // Delegation to a subagent instead of an MCP tool_call — see
-          // SubagentToolConfig above and createFilesystemAgent, which builds
-          // this `run()` with its own child spanId (parentSpanId = this agent).
-          const input = toolUse.input as { module?: unknown; task?: unknown };
-          text = await opts.subagentTool.run({ module: String(input.module ?? ""), task: String(input.task ?? "") });
-          isError = false;
-        } else {
-          const result = await opts.mcpClient.callTool({
-            name: toolUse.name,
-            arguments: toolUse.input as Record<string, unknown>,
-          });
-          text = result.content.map((c) => (c as { text?: string }).text ?? "").join("\n");
-          isError = Boolean(result.isError);
-        }
-
-        await opts.traceLogger.log({ ...opts.traceCtx, event: "tool_result", tool: toolUse.name, output: text, isError });
-        resultBlocks.push(buildToolResultBlock(toolUse.id, text, isError));
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        await opts.traceLogger.log({ ...opts.traceCtx, event: "tool_result", tool: toolUse.name, output: message, isError: true });
-        resultBlocks.push(buildToolResultBlock(toolUse.id, message, true));
-      }
+      resultBlocks.push(await runToolUse(opts, toolUse, subagentToolName));
     }
 
     messages.push({ role: "user", content: resultBlocks as unknown as Anthropic.MessageParam["content"] });
